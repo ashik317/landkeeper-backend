@@ -52,6 +52,7 @@ THIRD_PARTY_APPS = [
 
 PROJECT_APPS = [
     'apps.authentication.apps.AuthenticationConfig',
+    'common.apps.CommonConfig',
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PROJECT_APPS
@@ -160,7 +161,7 @@ REST_AUTH = {
     "TOKEN_MODEL": None,
     "JWT_AUTH_RETURN_EXPIRATION": True,
     "LOGIN_SERIALIZER": "api.serializers.auth.CustomLoginSerializer",
-    "USER_DETAILS_SERIALIZER": "api.serializers.auth.CustomUserDetailsSerializer",
+    "JWT_SERIALIZER": "api.serializers.auth.CustomJWTSerializer",
 }
 
 ACCOUNT_EMAIL_VERIFICATION = "none"
