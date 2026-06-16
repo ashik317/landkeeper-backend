@@ -1,13 +1,13 @@
 from django.urls import path
 from api.views.organisation import (
-    OrganisationOnboardingListAPIView,
+    OrganisationOnboardingListCreateAPIView,
     OrganisationOnboardingDetailAPIView
 )
 
 urlpatterns = [
     path(
         "onboard/",
-        OrganisationOnboardingListAPIView.as_view(),
+        OrganisationOnboardingListCreateAPIView.as_view(),
         name="organisation-list-create"
     ),
     path(
