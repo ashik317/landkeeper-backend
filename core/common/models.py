@@ -2,14 +2,18 @@ from easy_thumbnails.fields import ThumbnailerImageField
 import uuid
 import logging
 import pprint
+import os
 
 from django.conf import settings
 from django.db import models
 from autoslug import AutoSlugField
 
+from .utils import media_path
+
 logger = logging.getLogger(__name__)
 USER_IP_ADDRESS = ""
 User = settings.AUTH_USER_MODEL
+
 
 class CreatedAtUpdatedAtBaseModel(models.Model):
     alias = models.UUIDField(
@@ -82,3 +86,11 @@ class TimestampThumbnailImageField(ThumbnailerImageField):
             instance, new_filename
         )
         return filename
+
+
+class Media(CreatedAtUpdatedAtBaseModel):
+    image = models.ImageField(upload_to=media_path)
+    description = models.TextField(blank=True, null=True)
+
+    def __str__(self):
+        return os.path.basename(self.image.name)

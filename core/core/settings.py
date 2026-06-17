@@ -56,6 +56,7 @@ PROJECT_APPS = [
     "apps.authentication.apps.AuthenticationConfig",
     "apps.organisation.apps.OrganisationConfig",
     "apps.property.apps.PropertyConfig",
+    "apps.subscription.apps.SubscriptionConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PROJECT_APPS
@@ -205,7 +206,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = "static/"
 
 # Email settings
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
