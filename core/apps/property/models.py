@@ -1,7 +1,5 @@
 from django.db import models
-
 from common.models import CreatedAtUpdatedAtBaseModel, Media
-
 from .enums import PropertyType
 
 
