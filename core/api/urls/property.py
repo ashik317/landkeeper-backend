@@ -3,7 +3,9 @@ from api.views.property import (
     PropertyListCreateAPIView,
     PropertyRetrieveUpdateDestroyAPIView,
     MortgageListCreateAPIView,
-    MortgageRetrieveAPIView
+    MortgageRetrieveAPIView,
+    ComplianceAndCertificationListCreateAPIView,
+    ComplianceAndCertificationRetrieveAPIView
 )
 
 urlpatterns = [
@@ -27,4 +29,14 @@ urlpatterns = [
         MortgageRetrieveAPIView.as_view(),
         name="property-retrieve-update"
     ),
+    path(
+        "compliance/",
+        ComplianceAndCertificationListCreateAPIView.as_view(),
+        name="compliance-list-create"
+    ),
+    path(
+        "compliance/<uuid:alias>/",
+        ComplianceAndCertificationRetrieveAPIView.as_view(),
+        name="compliance-retrieve-update"
+    )
 ]

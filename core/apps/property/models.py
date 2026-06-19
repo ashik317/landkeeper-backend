@@ -1,6 +1,6 @@
 from django.db import models
 from common.models import CreatedAtUpdatedAtBaseModel, Media
-from .enums import PropertyType
+from .enums import PropertyType, CertificateType
 
 
 class Property(CreatedAtUpdatedAtBaseModel):
@@ -56,3 +56,33 @@ class Mortgage(CreatedAtUpdatedAtBaseModel):
 
     def __str__(self):
         return f"{self.lender_name} - {self.mortgage_account_number}"
+
+class ComplianceAndCertification(CreatedAtUpdatedAtBaseModel):
+    epc = models.CharField(max_length=255, blank=True, null=True)
+    certificate_type = models.CharField(
+        max_length=50,
+        choices=CertificateType.choices,
+        blank=True,
+        null=True,
+    )
+    gas_safety_certificate = models.CharField(max_length=255, blank=True, null=True)
+    electrical_safety_certificate = models.CharField(max_length=255, blank=True, null=True)
+    fire_risk_assessment = models.CharField(max_length=255, blank=True, null=True)
+    hmo_licence = models.CharField(max_length=255, blank=True, null=True)
+    insurance_documents = models.CharField(max_length=255, blank=True, null=True)
+    pat_testing = models.CharField(max_length=255, blank=True, null=True)
+    legionella_assessment = models.CharField(max_length=255, blank=True, null=True)
+    issue_date = models.DateField(blank=True, null=True)
+    expiry_date = models.DateField(blank=True, null=True)
+    issued_by = models.CharField(max_length=255, blank=True, null=True)
+    certificate_file = models.FileField(upload_to="compliance_certificates/", blank=True, null=True)
+    property = models.ForeignKey(
+        Property, on_delete=models.CASCADE, related_name="compliance_certificates"
+    )
+
+    class Meta:
+        verbose_name = "Compliance and Certification"
+        verbose_name_plural = "Compliance and Certifications"
+
+    def __str__(self):
+        return f"Compliance Record {self.pk}"

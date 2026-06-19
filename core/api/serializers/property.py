@@ -1,5 +1,9 @@
 from rest_framework import serializers
-from apps.property.models import Property, Mortgage
+from apps.property.models import (
+    Property,
+    Mortgage,
+    ComplianceAndCertification
+)
 from common.models import Media
 
 
@@ -84,6 +88,37 @@ class MortgageSerializers(serializers.ModelSerializer):
             "early_repayment_charge",
             "renewal_date",
             "notes",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "alias",
+            "created_at",
+            "updated_at",
+        ]
+
+class ComplianceAndCertificationSerializers(serializers.ModelSerializer):
+    property_name = serializers.CharField(source="property.name", read_only=True)
+
+    class Meta:
+        model = ComplianceAndCertification
+        fields = [
+            "alias",
+            "property",
+            "property_name",
+            "epc",
+            "certificate_type",
+            "gas_safety_certificate",
+            "electrical_safety_certificate",
+            "fire_risk_assessment",
+            "hmo_licence",
+            "insurance_documents",
+            "pat_testing",
+            "legionella_assessment",
+            "issue_date",
+            "expiry_date",
+            "issued_by",
+            "certificate_file",
             "created_at",
             "updated_at",
         ]
