@@ -1,6 +1,7 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+
 class NameTitleChoices(models.TextChoices):
     MR = "MR", _("Mr.")
     MRS = "MRS", _("Mrs.")
@@ -12,9 +13,8 @@ class NameTitleChoices(models.TextChoices):
     PROFESSOR = "PROFESSOR", _("Professor.")
     DOCTOR = "DOCTOR", _("Doctor.")
 
+
 class UserRoleChoices(models.TextChoices):
     LANDLORD = "LANDLORD", _("Landlord")
-    MORTGAGE_ADVISER = "MORTGAGE_ADVISER", _("Mortgage Adviser")
-    ACCOUNTANT = "ACCOUNTANT", _("Accountant")
-    LETTING_AGENT = "LETTING_AGENT", _("Letting Agent")
     ADMIN = "ADMIN", _("Admin")
+    LETTING_AGENT = "LETTING_AGENT", _("Letting Agent")
