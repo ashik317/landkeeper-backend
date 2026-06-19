@@ -7,18 +7,19 @@ from rest_framework.generics import (
 )
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-
 from apps.property.models import (
     Property,
     Mortgage,
     Tenant,
-    TenantDocument
+    TenantDocument,
+    ComplianceAndCertification,
 )
 from api.serializers.property import (
     PropertySerializer,
     MortgageSerializers,
     TenantSerializer,
     TenantDocumentSerializer,
+    ComplianceAndCertificationSerializers,
 )
 
 
@@ -124,4 +125,20 @@ class TenantDocumentRetrieveAPIView(RetrieveUpdateDestroyAPIView):
             TenantDocument,
             alias=self.kwargs["document_alias"],
             tenant__alias=self.kwargs["alias"]
+        )
+
+class ComplianceAndCertificationListCreateAPIView(ListCreateAPIView):
+    serializer_class = ComplianceAndCertificationSerializers
+    permission_classes = [IsAuthenticated]
+    def get_queryset(self):
+        return ComplianceAndCertification.objects.all()
+
+class ComplianceAndCertificationRetrieveAPIView(RetrieveUpdateDestroyAPIView):
+    serializer_class = ComplianceAndCertificationSerializers
+    permission_classes = [IsAuthenticated]
+    lookup_field = "alias"
+    def get_object(self):
+        return get_object_or_404(
+            ComplianceAndCertification,
+            alias=self.kwargs["alias"]
         )

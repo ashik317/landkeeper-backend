@@ -3,7 +3,8 @@ from apps.property.models import (
     Property,
     Mortgage,
     Tenant,
-    TenantDocument
+    TenantDocument,
+    ComplianceAndCertification,
 )
 from common.models import Media
 
@@ -98,7 +99,6 @@ class MortgageSerializers(serializers.ModelSerializer):
             "updated_at",
         ]
 
-
 class TenantDocumentSerializer(serializers.ModelSerializer):
     files = serializers.ListField(
         child=serializers.FileField(),
@@ -145,6 +145,29 @@ class TenantSerializer(serializers.ModelSerializer):
             "employment_details",
             "id_verification_records",
             "documents",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "alias",
+            "created_at",
+            "updated_at",
+        ]
+
+class ComplianceAndCertificationSerializers(serializers.ModelSerializer):
+    property_name = serializers.CharField(source="property.name", read_only=True)
+
+    class Meta:
+        model = ComplianceAndCertification
+        fields = [
+            "alias",
+            "property",
+            "property_name",
+            "certificate_type",
+            "issue_date",
+            "expiry_date",
+            "issued_by",
+            "certificate_file",
             "created_at",
             "updated_at",
         ]
