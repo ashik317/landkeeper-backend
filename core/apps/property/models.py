@@ -1,15 +1,26 @@
 from django.db import models
 from common.models import CreatedAtUpdatedAtBaseModel, Media
-from .enums import PropertyType, CertificateType
-
+from .enums import (
+    PropertyType,
+    CertificateType,
+    StatusType,
+    PropertyProductType,
+    MortgageProductType
+)
 
 class Property(CreatedAtUpdatedAtBaseModel):
-    name = models.CharField(max_length=255)
+    property_name = models.CharField(max_length=255)
     address = models.CharField(max_length=255)
     property_type = models.CharField(
         max_length=20,
         choices=PropertyType.choices,
         default=PropertyType.RESIDENTIAL,
+    )
+    status = models.CharField(
+        max_length=50,
+        choices=StatusType.choices,
+        blank=True,
+        null=True,
     )
     purchase_date = models.DateField(blank=True, null=True)
     purchase_price = models.DecimalField(
@@ -18,25 +29,48 @@ class Property(CreatedAtUpdatedAtBaseModel):
     current_valuation = models.DecimalField(
         max_digits=10, decimal_places=2, blank=True, null=True
     )
+    product_type = models.CharField(
+        max_length=50,
+        choices=PropertyProductType.choices,
+        blank=True,
+        null=True,
+    )
+    bedrooms = models.PositiveIntegerField(blank=True, null=True)
+    bathrooms = models.PositiveIntegerField(blank=True, null=True)
     ownership_type = models.CharField(max_length=50, blank=True, null=True)
     ownership_percentage = models.DecimalField(
-        max_digits=5, decimal_places=2, blank=True, null=True
+        max_digits=5,
+        decimal_places=2,
+        blank=True,
+        null=True,
     )
+    start_date = models.DateField(blank=True, null=True)
+    end_date = models.DateField(blank=True, null=True)
     images = models.ManyToManyField(Media, blank=True, related_name="property_images")
     notes = models.TextField(blank=True, null=True)
 
     def __str__(self):
-        return self.name
+        return self.property_name
+
+    @property
+    def current_mortgage(self):
+        return self.mortgages.filter(end_date__isnull=True).order_by("-start_date").first()
 
 
 class Mortgage(CreatedAtUpdatedAtBaseModel):
     lender_name = models.CharField(max_length=255)
     mortgage_account_number = models.CharField(max_length=255, blank=True, null=True)
     mortgage_adviser = models.CharField(max_length=255, blank=True, null=True)
+    mortgage_product_type = models.CharField(
+        max_length=50,
+        choices=MortgageProductType.choices,
+        blank=True,
+        null=True,
+    )
     interest_rate = models.DecimalField(
         max_digits=5, decimal_places=2, blank=True, null=True
     )
-    variable_type = models.CharField(max_length=50, blank=True, null=True)
+    loan_amount = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
     start_date = models.DateField(blank=True, null=True)
     end_date = models.DateField(blank=True, null=True)
     monthly_payment = models.DecimalField(
@@ -45,11 +79,12 @@ class Mortgage(CreatedAtUpdatedAtBaseModel):
     outstanding_balance = models.DecimalField(
         max_digits=10, decimal_places=2, blank=True, null=True
     )
+    term = models.PositiveIntegerField(blank=True, null=True)
     early_repayment_charge = models.DecimalField(
         max_digits=10, decimal_places=2, blank=True, null=True
     )
     renewal_date = models.DateField(blank=True, null=True)
-    notes = models.TextField(blank=True, null=True)
+    broker_notes = models.TextField(blank=True, null=True)
     property = models.ForeignKey(
         Property, on_delete=models.CASCADE, related_name="mortgages"
     )

@@ -17,3 +17,20 @@ class CertificateType(models.TextChoices):
     PAT_TESTING = "PAT_TESTING", _("PAT Testing")
     LEGIONELLA_ASSESSMENT = "LEGIONELLA_ASSESSMENT", _("Legionella Assessment")
     INSURANCE_DOCUMENT = "INSURANCE_DOCUMENT", _("Insurance Document")
+
+class StatusType(models.TextChoices):
+    OCCUPIED = "OCCUPIED", _("Occupied")
+    VACANT = "VACANT", _("Vacant")
+    UNDER_MAINTENANCE = "UNDER_MAINTENANCE", _("Under Maintenance")
+
+class PropertyProductType(models.TextChoices):
+    FIXED_RATE = "FIXED_RATE", _("Fixed Rate")
+    VARIABLE_RATE = "VARIABLE_RATE", _("Variable Rate")
+    TRACKER = "TRACKER", _("Tracker")
+    OFFSET = "OFFSET", _("Offset")
+
+class MortgageProductType(models.TextChoices):
+    FIXED_RATE = "FIXED_RATE", _("Fixed Rate")
+    VARIABLE_RATE = "VARIABLE_RATE", _("Variable Rate")
+    TRACKER = "TRACKER", _("Tracker")
+    OFFSET = "OFFSET", _("Offset")
