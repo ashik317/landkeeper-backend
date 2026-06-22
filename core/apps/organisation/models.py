@@ -1,16 +1,15 @@
-from apps.authentication.models import User
+from django.contrib.auth import get_user_model
+from django.db import models
 from django.utils.translation import gettext_lazy as _
-from apps.organisation.enums import (
-    GenderChoices,
-    OrganisationRoleChoices,
-    SourceChoices,
-)
+
+from apps.organisation.enums import OrganisationRoleChoices
 from common.models import (
     NameSlugDescriptionBaseModel,
     TimestampThumbnailImageField,
     CreatedAtUpdatedAtBaseModel,
 )
-from django.db import models
+
+User = get_user_model()
 
 
 class Organisation(NameSlugDescriptionBaseModel):
@@ -24,10 +23,8 @@ class Organisation(NameSlugDescriptionBaseModel):
     primary_mobile = models.CharField(max_length=20)
     other_contact = models.CharField(max_length=64, blank=True, null=True)
     contact_person = models.CharField(max_length=64, blank=True, null=True)
-    contact_person_designation = models.CharField(max_length=64, blank=True, null=True)
     website = models.URLField(blank=True, null=True)
     address = models.TextField(blank=True, null=True)
-    is_approved = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
 
     class Meta:
