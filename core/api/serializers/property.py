@@ -3,7 +3,6 @@ from apps.property.models import (
     Property,
     Mortgage,
     Tenant,
-    TenantDocument,
     ComplianceAndCertification,
 )
 from common.models import Media
@@ -18,140 +17,24 @@ class MediaSerializer(serializers.ModelSerializer):
             "description",
         ]
 
+
 class PropertySerializer(serializers.ModelSerializer):
-    images = MediaSerializer(many=True, required=False)
+    documents = MediaSerializer(many=True, required=False)
 
     class Meta:
         model = Property
         fields = [
             "alias",
             "property_name",
-            "address",
             "property_type",
             "status",
-            "purchase_date",
+            "address",
             "purchase_price",
-            "current_valuation",
-            "product_type",
+            "current_value",
+            "purchase_date",
             "bedrooms",
             "bathrooms",
-            "ownership_type",
-            "ownership_percentage",
-            "start_date",
-            "end_date",
-            "images",
             "notes",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = [
-            "alias",
-            "created_at",
-            "updated_at",
-        ]
-
-    def create(self, validated_data):
-        images_data = validated_data.pop("images", [])
-
-        property_obj = Property.objects.create(**validated_data)
-
-        for image_data in images_data:
-            media = Media.objects.create(**image_data)
-            property_obj.images.add(media)
-
-        return property_obj
-
-    def update(self, instance, validated_data):
-        images_data = validated_data.pop("images", None)
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-
-        if images_data is not None:
-            instance.images.clear()
-            for image_data in images_data:
-                media = Media.objects.create(**image_data)
-                instance.images.add(media)
-
-        return instance
-
-
-class MortgageSerializers(serializers.ModelSerializer):
-    property_name = serializers.CharField(source="property.name", read_only=True)
-    class Meta:
-        model = Mortgage
-        fields =[
-            "alias",
-            "property",
-            "property_name",
-            "lender_name",
-            "mortgage_account_number",
-            "mortgage_adviser",
-            "interest_rate",
-            "mortgage_product_type",
-            "loan_amount",
-            "start_date",
-            "end_date",
-            "monthly_payment",
-            "outstanding_balance",
-            "term",
-            "early_repayment_charge",
-            "renewal_date",
-            "broker_notes",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = [
-            "alias",
-            "created_at",
-            "updated_at",
-        ]
-
-class TenantDocumentSerializer(serializers.ModelSerializer):
-    files = serializers.ListField(
-        child=serializers.FileField(),
-        write_only=True,
-        required=False
-    )
-    file = serializers.FileField(
-        read_only=False,
-        required=False
-    )
-
-    class Meta:
-        model = TenantDocument
-        fields = [
-            "alias",
-            "files",
-            "file",
-            "description",
-        ]
-        read_only_fields = [
-            "alias",
-            "file",
-        ]
-
-class TenantSerializer(serializers.ModelSerializer):
-    documents = TenantDocumentSerializer(many=True, read_only=True)
-    properties = serializers.PrimaryKeyRelatedField(
-        many=True,
-        queryset=Property.objects.all()
-    )
-
-    class Meta:
-        model = Tenant
-        fields = [
-            "alias",
-            "properties",
-            "tenant_name",
-            "contact_details",
-            "tenancy_start_date",
-            "tenancy_end_date",
-            "rent_amount",
-            "deposit_amount",
-            "guarantor_details",
-            "employment_details",
-            "id_verification_records",
             "documents",
             "created_at",
             "updated_at",
@@ -162,18 +45,91 @@ class TenantSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
-class ComplianceAndCertificationSerializers(serializers.ModelSerializer):
-    property_name = serializers.CharField(source="property.name", read_only=True)
+    def create(self, validated_data):
+        documents_data = validated_data.pop("documents", [])
 
+        property_obj = Property.objects.create(**validated_data)
+
+        for document_data in documents_data:
+            media = Media.objects.create(**document_data)
+            property_obj.documents.add(media)
+
+        return property_obj
+
+    def update(self, instance, validated_data):
+        documents_data = validated_data.pop("documents", None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        if documents_data is not None:
+            instance.documents.clear()
+            for document_data in documents_data:
+                media = Media.objects.create(**document_data)
+                instance.documents.add(media)
+
+        return instance
+
+
+class MortgageSerializers(serializers.ModelSerializer):
+    class Meta:
+        model = Mortgage
+        fields = [
+            "alias",
+            "property",
+            "lender_name",
+            "product_type",
+            "interest_rate",
+            "loan_amount",
+            "outstanding_balance",
+            "monthly_payment",
+            "term",
+            "start_date",
+            "end_date",
+            "broker_notes",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "alias",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class TenantSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Tenant
+        fields = [
+            "alias",
+            "first_name",
+            "last_name",
+            "email",
+            "phone",
+            "rent_amount",
+            "deposit",
+            "tenancy_start_date",
+            "tenancy_end_date",
+            "employment_details",
+            "guarantor_name",
+            "notes",
+            "property",
+        ]
+        read_only_fields = [
+            "alias",
+        ]
+
+
+class ComplianceAndCertificationSerializers(serializers.ModelSerializer):
     class Meta:
         model = ComplianceAndCertification
         fields = [
             "alias",
             "property",
-            "property_name",
             "certificate_type",
             "issue_date",
             "expiry_date",
+            "certificate_number",
             "issued_by",
             "certificate_file",
             "created_at",

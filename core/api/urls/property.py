@@ -1,66 +1,39 @@
 from django.urls import path
 from api.views.property import (
-    PropertyListCreateAPIView,
-    PropertyRetrieveUpdateDestroyAPIView,
-    MortgageListCreateAPIView,
-    MortgageRetrieveAPIView,
-    TenantRetrieveAPIView,
-    TenantListCreateAPIView,
-    TenantDocumentListCreateAPIView,
-    TenantDocumentRetrieveAPIView,
-    ComplianceAndCertificationListCreateAPIView,
-    ComplianceAndCertificationRetrieveAPIView,
+    PropertyListView,
+    PropertyDetailView,
+    MortgageListView,
+    MortgageDetailView,
+    TenantListView,
+    TenantDetailView,
+    ComplianceAndCertificationListView,
+    ComplianceAndCertificationDetailView,
 )
 
 urlpatterns = [
+    path("/property", PropertyListView.as_view()),
     path(
-        "proprty/",
-        PropertyListCreateAPIView.as_view(),
-        name="property-list-create"
+        "/property/<uuid:property_alias>",
+        PropertyDetailView.as_view(),
+        name="property-retrieve-update",
+    ),
+    path("/mortgage", MortgageListView.as_view()),
+    path(
+        "/mortgage/<uuid:mortgage_alias>",
+        MortgageDetailView.as_view(),
+        name="mortgage-retrieve-update",
+    ),
+    path("/tenants", TenantListView.as_view()),
+    path(
+        "/tenants/<uuid:tenant_alias>",
+        TenantDetailView.as_view(),
     ),
     path(
-        "proprty/<uuid:alias>/",
-        PropertyRetrieveUpdateDestroyAPIView.as_view(),
-        name="property-retrieve-update"
+        "/compliance",
+        ComplianceAndCertificationListView.as_view(),
     ),
     path(
-        "mortgage/",
-        MortgageListCreateAPIView.as_view(),
-        name="mortgage-list-create"
+        "/compliance/<uuid:compliance_alias>",
+        ComplianceAndCertificationDetailView.as_view(),
     ),
-    path(
-        "mortgage/<uuid:alias>/",
-        MortgageRetrieveAPIView.as_view(),
-        name="mortgage-retrieve-update"
-    ),
-    path(
-        "tenants/",
-        TenantListCreateAPIView.as_view(),
-        name="tenant-list-create"
-    ),
-    path(
-        "tenants/<uuid:alias>/",
-        TenantRetrieveAPIView.as_view(),
-        name="tenant-retrieve-update"
-    ),
-    path(""
-         "tenants/<uuid:alias>/documents/",
-         TenantDocumentListCreateAPIView.as_view(),
-         name="tenant-document-list-create"
-    ),
-    path(
-        "tenants/<uuid:alias>/documents/<uuid:document_alias>/",
-        TenantDocumentRetrieveAPIView.as_view(),
-        name="tenant-document-detail"
-    ),
-    path(
-        "compliance/",
-        ComplianceAndCertificationListCreateAPIView.as_view(),
-        name="compliance-list-create"
-    ),
-    path(
-        "compliance/<uuid:alias>/",
-        ComplianceAndCertificationRetrieveAPIView.as_view(),
-        name="compliance-retrieve-update"
-    )
 ]

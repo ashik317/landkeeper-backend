@@ -74,6 +74,12 @@ class User(AbstractBaseUser, PermissionsMixin, CreatedAtUpdatedAtBaseModel):
         full_name = " ".join(filter(None, parts))
         return full_name.strip().title()
 
+    def get_organisation(self):
+        organisation_user = self.organisation_users.first()
+        if organisation_user:
+            return organisation_user.organisation
+        return None
+
     def __str__(self):
         name = f"{self.first_name} {self.last_name}".strip()
         return f"{name or 'User'} - {self.email}"
