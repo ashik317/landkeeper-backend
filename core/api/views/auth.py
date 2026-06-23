@@ -9,14 +9,16 @@ from apps.authentication.models import User
 from urllib.parse import urlencode
 from django.http import HttpResponseRedirect
 from django.conf import settings
-
 from rest_framework import status
 from rest_framework.views import APIView
-from rest_framework.generics import CreateAPIView
+from rest_framework.generics import CreateAPIView, RetrieveUpdateAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from ..serializers.auth import UserRegistrationSerializer
+from ..serializers.auth import (
+    UserRegistrationSerializer,
+    UserProfileSerializer
+)
 
 
 class AccountRegistrationView(CreateAPIView):
@@ -155,3 +157,10 @@ class ChangePasswordView(APIView):
         return Response(
             {"detail": "Password changed successfully."}, status=status.HTTP_200_OK
         )
+
+class UserProfileView(RetrieveUpdateAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = UserProfileSerializer
+
+    def get_object(self):
+        return self.request.user

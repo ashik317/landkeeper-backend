@@ -2,9 +2,7 @@ from django.db import models
 from django.contrib.auth.base_user import BaseUserManager, AbstractBaseUser
 from django.contrib.auth.models import PermissionsMixin
 from django.utils.translation import gettext_lazy as _
-
 from common.models import CreatedAtUpdatedAtBaseModel
-
 from .enums import NameTitleChoices, UserRoleChoices
 from .utils import profile_image_upload_path
 

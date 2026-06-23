@@ -9,12 +9,14 @@ from apps.property.models import (
     Mortgage,
     Tenant,
     ComplianceAndCertification,
+    UploadDocument,
 )
 from api.serializers.property import (
     PropertySerializer,
     MortgageSerializers,
     TenantSerializer,
     ComplianceAndCertificationSerializers,
+    UploadDocumentSerializer,
 )
 
 
