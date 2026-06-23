@@ -15,15 +15,15 @@ from rest_framework.generics import CreateAPIView, RetrieveUpdateAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from ..serializers.auth import (
-    UserRegistrationSerializer,
-    UserProfileSerializer
-)
+from ..serializers.auth import UserRegistrationSerializer, UserProfileSerializer
 
 
 class AccountRegistrationView(CreateAPIView):
     serializer_class = UserRegistrationSerializer
     permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        return User.objects.all()
 
 
 class CustomLoginView(LoginView):
@@ -32,7 +32,7 @@ class CustomLoginView(LoginView):
 
 class GoogleLoginView(SocialLoginView):
     adapter_class = GoogleOAuth2Adapter
-    callback_url = "http://localhost:8000/auth/social/google/"
+    callback_url = "http://localhost:8002/auth/social/google/"
     client_class = OAuth2Client
 
 
@@ -157,6 +157,7 @@ class ChangePasswordView(APIView):
         return Response(
             {"detail": "Password changed successfully."}, status=status.HTTP_200_OK
         )
+
 
 class UserProfileView(RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated]
