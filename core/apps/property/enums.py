@@ -34,3 +34,21 @@ class ProductType(models.TextChoices):
     VARIABLE_RATE = "VARIABLE_RATE", _("Variable Rate")
     TRACKER = "TRACKER", _("Tracker")
     OFFSET = "OFFSET", _("Offset")
+
+
+class MortgageProductType(models.TextChoices):
+    FIXED_RATE = "FIXED_RATE", _("Fixed Rate")
+    VARIABLE_RATE = "VARIABLE_RATE", _("Variable Rate")
+    TRACKER = "TRACKER", _("Tracker")
+    OFFSET = "OFFSET", _("Offset")
+
+
+class DocumentCategoryType(models.TextChoices):
+    MORTGAGE_DOCUMENTS = "MORTGAGE_DOCUMENTS", _("Mortgage Documents")
+    TENANCY_AGREEMENT = "TENANCY_AGREEMENT", _("Tenancy Agreement")
+    CERTIFICATE = "CERTIFICATE", _("Certificate")
+    INSURANCE = "INSURANCE", _("Insurance")
+    INVOICE = "INVOICE", _("Invoice")
+    TAX_DOCUMENT = "TAX_DOCUMENT", _("Tax Document")
+    PROPERTY_PHOTO = "PROPERTY_PHOTO", _("Property Photo")
+    LEGAL_DOCUMENT = "LEGAL_DOCUMENT", _("Legal Document")

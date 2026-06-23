@@ -124,3 +124,20 @@ class ComplianceAndCertificationDetailView(RetrieveUpdateDestroyAPIView):
         return get_object_or_404(
             ComplianceAndCertification, alias=self.kwargs["compliance_alias"]
         )
+
+
+class UploadDocumentListCreateApiView(ListCreateAPIView):
+    serializer_class = UploadDocumentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return UploadDocument.objects.all()
+
+
+class UploadDocumentRetrieveAPIView(RetrieveUpdateDestroyAPIView):
+    serializer_class = UploadDocumentSerializer
+    permission_classes = [IsAuthenticated]
+    lookup_field = "alias"
+
+    def get_object(self):
+        return get_object_or_404(UploadDocument, alias=self.kwargs["alias"])
