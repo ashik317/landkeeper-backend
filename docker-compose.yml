@@ -37,12 +37,12 @@ services:
     container_name: landkeeper_web
     restart: always
     working_dir: /app/core
-    command: python manage.py runserver 0.0.0.0:8000
+    command: python manage.py runserver 0.0.0.0:8002
     volumes:
       - .:/app
       - /app/venv
     ports:
-      - "8000:8000"
+      - "8002:8002"
     env_file:
       - .env
     depends_on:
