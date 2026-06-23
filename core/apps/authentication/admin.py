@@ -14,17 +14,50 @@ class UserAdmin(BaseUserAdmin):
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
-        (_("Personal Info"), {"fields": ("title", "first_name", "middle_name", "last_name", "phone", "profile_image")}),
-        (_("Address"), {"fields": ("address", "city", "state", "country", "post_code")}),
-        (_("Permissions"), {"fields": ("is_active", "is_staff", "is_superuser", "is_password_set", "groups", "user_permissions")}),
+        (
+            _("Personal Info"),
+            {
+                "fields": (
+                    "title",
+                    "first_name",
+                    "middle_name",
+                    "last_name",
+                    "phone",
+                    "profile_image",
+                )
+            },
+        ),
+        (
+            _("Permissions"),
+            {
+                "fields": (
+                    "is_active",
+                    "is_staff",
+                    "is_superuser",
+                    "groups",
+                    "user_permissions",
+                )
+            },
+        ),
         (_("Important dates"), {"fields": ("last_login",)}),
     )
 
     add_fieldsets = (
-        (None, {
-            "classes": ("wide",),
-            "fields": ("email", "first_name", "last_name", "password1", "password2", "is_staff", "is_active"),
-        }),
+        (
+            None,
+            {
+                "classes": ("wide",),
+                "fields": (
+                    "email",
+                    "first_name",
+                    "last_name",
+                    "password1",
+                    "password2",
+                    "is_staff",
+                    "is_active",
+                ),
+            },
+        ),
     )
 
     USERNAME_FIELD = "email"

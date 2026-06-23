@@ -113,6 +113,11 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
+    role = serializers.CharField(
+        source="organisation_users.first.role",
+        read_only=True,
+        default=None,
+    )
 
     class Meta:
         model = User
@@ -122,13 +127,14 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "first_name",
             "middle_name",
             "last_name",
+            "role",
             "phone",
             "profile_image",
             "is_active",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["email", "is_active", "created_at", "updated_at"]
+        read_only_fields = ["email", "role", "is_active", "created_at", "updated_at"]
 
 
 class CustomJWTSerializer(JWTSerializer):
