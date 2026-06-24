@@ -7,10 +7,7 @@ from apps.property.models import (
     ComplianceAndCertification,
     UploadDocument,
 )
-from common.models import (
-    Media,
-    DocumentFile
-)
+from common.models import Media, DocumentFile
 
 
 class MediaSerializer(serializers.ModelSerializer):
@@ -24,7 +21,10 @@ class MediaSerializer(serializers.ModelSerializer):
 
 
 class PropertySerializer(serializers.ModelSerializer):
-    documents = MediaSerializer(many=True, required=False)
+    documents_data = serializers.ListField(
+        child=serializers.ImageField(), required=False, write_only=True
+    )
+    documents = MediaSerializer(many=True, read_only=True)
 
     class Meta:
         model = Property
@@ -39,8 +39,10 @@ class PropertySerializer(serializers.ModelSerializer):
             "purchase_date",
             "bedrooms",
             "bathrooms",
+            "rent_per_month",
             "notes",
             "documents",
+            "documents_data",
             "created_at",
             "updated_at",
         ]
@@ -51,27 +53,34 @@ class PropertySerializer(serializers.ModelSerializer):
         ]
 
     def create(self, validated_data):
-        documents_data = validated_data.pop("documents", [])
+        documents_data = validated_data.pop("documents_data", [])
 
         property_obj = Property.objects.create(**validated_data)
 
-        for document_data in documents_data:
-            media = Media.objects.create(**document_data)
-            property_obj.documents.add(media)
+        documents = [
+            Media.objects.create(image=document) for document in documents_data
+        ]
+
+        property_obj.documents.set(documents)
 
         return property_obj
 
     def update(self, instance, validated_data):
-        documents_data = validated_data.pop("documents", None)
+        documents_data = validated_data.pop("documents_data", None)
+
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
+
         instance.save()
 
         if documents_data is not None:
-            instance.documents.clear()
-            for document_data in documents_data:
-                media = Media.objects.create(**document_data)
-                instance.documents.add(media)
+            instance.documents.all().delete()
+
+            documents = [
+                Media.objects.create(image=document) for document in documents_data
+            ]
+
+            instance.documents.set(documents)
 
         return instance
 
@@ -146,14 +155,11 @@ class ComplianceAndCertificationSerializers(serializers.ModelSerializer):
             "updated_at",
         ]
 
+
 class DocumentFileSerializer(serializers.ModelSerializer):
     class Meta:
         model = DocumentFile
-        fields = [
-            "id",
-            "file",
-            "description"
-        ]
+        fields = ["id", "file", "description"]
 
 
 class UploadDocumentSerializer(serializers.ModelSerializer):
@@ -163,7 +169,9 @@ class UploadDocumentSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False,
     )
-    property_name = serializers.CharField(source="property.property_name", read_only=True)
+    property_name = serializers.CharField(
+        source="property.property_name", read_only=True
+    )
 
     class Meta:
         model = UploadDocument
@@ -179,7 +187,16 @@ class UploadDocumentSerializer(serializers.ModelSerializer):
         ]
 
     def validate_uploaded_files(self, files):
-        allowed_extensions = [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".jpg", ".jpeg", ".png"]
+        allowed_extensions = [
+            ".pdf",
+            ".doc",
+            ".docx",
+            ".xls",
+            ".xlsx",
+            ".jpg",
+            ".jpeg",
+            ".png",
+        ]
         limit = 50 * 1024 * 1024  # 50MB
 
         for file in files:
@@ -187,7 +204,9 @@ class UploadDocumentSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(f"{file.name} exceeds 50MB limit.")
             ext = os.path.splitext(file.name)[1].lower()
             if ext not in allowed_extensions:
-                raise serializers.ValidationError(f"{file.name} has an unsupported file type.")
+                raise serializers.ValidationError(
+                    f"{file.name} has an unsupported file type."
+                )
 
         return files
 

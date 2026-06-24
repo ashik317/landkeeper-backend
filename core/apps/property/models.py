@@ -34,6 +34,9 @@ class Property(CreatedAtUpdatedAtBaseModel):
     purchase_date = models.DateField(blank=True, null=True)
     bedrooms = models.PositiveIntegerField(blank=True, null=True)
     bathrooms = models.PositiveIntegerField(blank=True, null=True)
+    rent_per_month = models.DecimalField(
+        max_digits=10, decimal_places=2, blank=True, null=True
+    )
     documents = models.ManyToManyField(
         Media, blank=True, related_name="property_documents"
     )

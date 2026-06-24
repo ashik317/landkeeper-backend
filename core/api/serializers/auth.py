@@ -113,11 +113,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
-    role = serializers.CharField(
-        source="organisation_users.first.role",
-        read_only=True,
-        default=None,
-    )
+    role = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -135,6 +131,16 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["email", "role", "is_active", "created_at", "updated_at"]
+
+    def get_role(self, obj):
+        if obj.is_superuser:
+            return "SUPER_ADMIN"
+        else:
+            return (
+                obj.organisation_users.first().role
+                if obj.organisation_users.exists()
+                else None
+            )
 
 
 class CustomJWTSerializer(JWTSerializer):
