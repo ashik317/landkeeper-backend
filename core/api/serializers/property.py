@@ -5,7 +5,7 @@ from apps.property.models import (
     Mortgage,
     Tenant,
     ComplianceAndCertification,
-    UploadDocument,
+    UploadDocument, Finance,
 )
 from common.models import Media, DocumentFile
 
@@ -231,4 +231,82 @@ class UploadDocumentSerializer(serializers.ModelSerializer):
             doc_file = DocumentFile.objects.create(file=file)
             instance.files.add(doc_file)
 
+        return instance
+
+class FinanceSerializer(serializers.ModelSerializer):
+    receipt_files = DocumentFileSerializer(
+        many=True,
+        read_only=True,
+        source="receipt"
+    )
+    uploaded_receipt = serializers.ListField(
+        child=serializers.FileField(),
+        write_only=True,
+        required=False,
+    )
+
+    class Meta:
+        model = Finance
+        fields = [
+            "alias",
+            "property",
+            "type",
+            "category",
+            "amount",
+            "date",
+            "description",
+            "receipt_files",
+            "uploaded_receipt",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "alias",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate_uploaded_receipt(self, receipt):
+        allowed_extensions = [
+            ".pdf",
+            ".doc",
+            ".docx",
+            ".xls",
+            ".xlsx",
+            ".jpg",
+            ".jpeg",
+            ".png",
+        ]
+        limit = 50 * 1024 * 1024
+
+        for file in receipt:
+            if file.size > limit:
+                raise serializers.ValidationError(f"{file.name} exceeds 50MB limit.")
+            ext = os.path.splitext(file.name)[1].lower()
+            if ext not in allowed_extensions:
+                raise serializers.ValidationError(
+                    f"{file.name} has an unsupported file type."
+                )
+
+        return receipt
+
+    def create(self, validated_data):
+        uploaded_receipt = validated_data.pop("uploaded_receipt", [])
+        finance = Finance.objects.create(**validated_data)
+
+        for file in uploaded_receipt:
+            doc_file = DocumentFile.objects.create(file=file)
+            finance.receipt.add(doc_file)
+        return finance
+
+    def update(self, instance, validated_data):
+        uploaded_receipt = validated_data.pop("uploaded_receipt", [])
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        for file in uploaded_receipt:
+            doc_file = DocumentFile.objects.create(file=file)
+            instance.receipt.add(doc_file)
         return instance

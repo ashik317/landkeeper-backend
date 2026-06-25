@@ -8,6 +8,8 @@ from api.views.property import (
     TenantDetailView,
     ComplianceAndCertificationListView,
     ComplianceAndCertificationDetailView,
+    FinanceDetailView,
+    FinanceListView,
 )
 
 urlpatterns = [
@@ -35,5 +37,15 @@ urlpatterns = [
     path(
         "/compliance/<uuid:compliance_alias>",
         ComplianceAndCertificationDetailView.as_view(),
+    ),
+    path(
+        "/finance",
+        FinanceListView.as_view(),
+        name="finance-list-create",
+    ),
+    path(
+        "/finance/<uuid:finance_alias>",
+        FinanceDetailView.as_view(),
+        name="finance-retrieve-update",
     ),
 ]
