@@ -9,14 +9,14 @@ from apps.property.models import (
     Mortgage,
     Tenant,
     ComplianceAndCertification,
-    UploadDocument,
+    UploadDocument, Finance,
 )
 from api.serializers.property import (
     PropertySerializer,
     MortgageSerializers,
     TenantSerializer,
     ComplianceAndCertificationSerializers,
-    UploadDocumentSerializer,
+    UploadDocumentSerializer, FinanceSerializer,
 )
 
 
@@ -141,3 +141,27 @@ class UploadDocumentRetrieveAPIView(RetrieveUpdateDestroyAPIView):
 
     def get_object(self):
         return get_object_or_404(UploadDocument, alias=self.kwargs["alias"])
+
+class FinanceListView(ListCreateAPIView):
+    serializer_class = FinanceSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        organisation = self.request.user.get_organisation()
+        if not organisation:
+            raise NotFound("Organisation not found for the user.")
+        return Finance.objects.filter(organisation=organisation)
+
+    def perform_create(self, serializer):
+        organisation = self.request.user.get_organisation()
+        if not organisation:
+            raise NotFound("Organisation not found for the user.")
+        serializer.save(organisation=organisation)
+
+
+class FinanceDetailView(RetrieveUpdateDestroyAPIView):
+    serializer_class = FinanceSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        return get_object_or_404(Finance, alias=self.kwargs["finance_alias"])

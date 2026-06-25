@@ -52,3 +52,18 @@ class DocumentCategoryType(models.TextChoices):
     TAX_DOCUMENT = "TAX_DOCUMENT", _("Tax Document")
     PROPERTY_PHOTO = "PROPERTY_PHOTO", _("Property Photo")
     LEGAL_DOCUMENT = "LEGAL_DOCUMENT", _("Legal Document")
+
+class TransactionType(models.TextChoices):
+    INCOME = "INCOME", _("Income")
+    EXPENSE = "EXPENSE", _("Expense")
+
+class Category(models.TextChoices):
+    RENTAL_INCOME = "RENTAL_INCOME", _("Rental Income")
+    MORTGAGE_PAYMENT = "MORTGAGE_PAYMENT", _("Mortgage Payment")
+    REPAIRS = "REPAIRS", _("Repairs")
+    INSURANCE = "INSURANCE", _("Insurance")
+    SERVICE_CHARGES = "SERVICE_CHARGES", _("Service Charges")
+    UTILITIES = "UTILITIES", _("Utilities")
+    MANAGEMENT_FEES = "MANAGEMENT_FEES", _("Management Fees")
+    TAX = "TAX", _("Tax")
+    OTHER = "OTHER", _("Other")
