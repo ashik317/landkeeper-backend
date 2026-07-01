@@ -9,6 +9,7 @@ from apps.property.models import (
     Finance,
 )
 from common.models import Media, DocumentFile
+from common.serializers import PropertySlimSerializer
 
 
 class MediaSerializer(serializers.ModelSerializer):
@@ -111,6 +112,11 @@ class MortgageSerializers(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        representation["property"] = PropertySlimSerializer(instance.property).data
+        return representation
 
 
 class TenantSerializer(serializers.ModelSerializer):
