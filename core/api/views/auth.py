@@ -1,4 +1,5 @@
 from datetime import timedelta
+from django.core.mail import send_mail
 from django.utils import timezone
 from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 from allauth.socialaccount.providers.oauth2.client import OAuth2Client
@@ -9,7 +10,11 @@ from dj_rest_auth.views import LoginView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 from api.utils import send_password_reset_email, send_verification_email
-from apps.authentication.models import User, EmailVerification
+from apps.authentication.models import (
+    User,
+    EmailVerification,
+    InviteUser
+)
 from urllib.parse import urlencode
 from django.http import HttpResponseRedirect
 from django.conf import settings
@@ -22,8 +27,11 @@ from apps.authentication.signals import create_default_organisation
 from ..serializers.auth import (
     UserRegistrationSerializer,
     UserProfileSerializer,
-    EmailVerifySerializer
+    EmailVerifySerializer,
+    InviteUserSerializer,
+    AcceptInviteSerializer
 )
+from django.shortcuts import get_object_or_404
 
 class AccountRegistrationView(CreateAPIView):
     serializer_class = UserRegistrationSerializer
@@ -277,3 +285,70 @@ class UserProfileView(RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user
+
+class SendInviteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = InviteUserSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        organisation = request.user.get_organisation()
+        if not organisation:
+            return Response(
+                {"detail": "You are not part of any organisation."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        email = serializer.validated_data["email"]
+        invite, created = InviteUser.objects.get_or_create(
+            email=email,
+            defaults={
+                "role": serializer.validated_data.get("role"),
+                "message": serializer.validated_data.get("message"),
+                "organisation": organisation,
+                "created_by": request.user,
+            },
+        )
+        if not created:
+            invite.role = serializer.validated_data.get("role", invite.role)
+            invite.message = serializer.validated_data.get("message", invite.message)
+            invite.updated_by = request.user
+            invite.save()
+
+        invite_link = f"{settings.FRONTEND_URL}/accept-invite/{invite.alias}"
+
+        send_mail(
+            subject="You're invited to join",
+            message=f"Click the link to create your account: {invite_link}",
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[invite.email],
+        )
+
+        return Response(
+            InviteUserSerializer(invite).data,
+            status=status.HTTP_201_CREATED
+        )
+
+class AcceptInviteView(APIView):
+    permission_classes = []
+
+    def post(self, request, alias):
+        invite = get_object_or_404(InviteUser, alias=alias)
+
+        serializer = AcceptInviteSerializer(
+            data=request.data,
+            context={"invite": invite},
+        )
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+
+        organisation = user.get_organisation()
+
+        return Response(
+            {
+                "message": "Account created successfully",
+                "organisation": organisation.name if organisation else None,
+            },
+            status=status.HTTP_201_CREATED
+        )

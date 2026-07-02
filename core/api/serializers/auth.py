@@ -2,7 +2,7 @@ from dj_rest_auth.serializers import LoginSerializer, JWTSerializer
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers
-from apps.authentication.models import EmailVerification
+from apps.authentication.models import EmailVerification, InviteUser
 from apps.organisation.models import Organisation, OrganisationUser
 from apps.subscription.models import UserSubscription, SubscriptionPlan
 from api.utils import send_verification_email
@@ -173,7 +173,13 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["email", "role", "is_active", "created_at", "updated_at"]
+        read_only_fields = [
+            "email",
+            "role",
+            "is_active",
+            "created_at",
+            "updated_at"
+        ]
 
     def get_role(self, obj):
         if obj.is_superuser:
@@ -188,3 +194,63 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 class CustomJWTSerializer(JWTSerializer):
     user = UserSerializer(read_only=True)
+
+
+class InviteUserSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = InviteUser
+        fields = [
+            "alias",
+            "email",
+            "role",
+            "message",
+            "organisation",
+        ]
+        read_only_fields = [
+            "alias",
+            "created_at",
+            "updated_at",
+            "organisation",
+        ]
+
+
+class AcceptInviteSerializer(serializers.Serializer):
+    first_name = serializers.CharField(max_length=150)
+    last_name = serializers.CharField(max_length=150)
+    password = serializers.CharField(write_only=True)
+    confirm_password = serializers.CharField(write_only=True)
+
+    def validate(self, data):
+        if data["password"] != data["confirm_password"]:
+            raise serializers.ValidationError("Passwords do not match")
+
+        invite = self.context.get("invite")
+        if not invite:
+            raise serializers.ValidationError("Invalid invite link")
+
+        if User.objects.filter(email=invite.email).exists():
+            raise serializers.ValidationError("An account with this email already exists")
+
+        return data
+
+    def create(self, validated_data):
+        invite = self.context["invite"]
+
+        with transaction.atomic():
+            user = User.objects.create_user(
+                email=invite.email,
+                first_name=validated_data["first_name"],
+                last_name=validated_data["last_name"],
+                password=validated_data["password"],
+            )
+
+            OrganisationUser.objects.create(
+                user=user,
+                organisation=invite.organisation,
+                role=invite.role,
+            )
+
+            invite.delete()
+
+        return user

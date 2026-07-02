@@ -11,6 +11,8 @@ from api.views.auth import (
     EmailVerifyView,
     ResendVerificationView,
     LogoutAPIView,
+    AcceptInviteView,
+    SendInviteView,
 )
 
 urlpatterns = [
@@ -29,4 +31,14 @@ urlpatterns = [
     ),
     path("/change-password", ChangePasswordView.as_view(), name="change_password"),
     path("/profile", UserProfileView.as_view(), name="user-profile"),
+    path(
+        "/accept-invite/<uuid:alias>",
+        AcceptInviteView.as_view(),
+        name = "accept-invite",
+    ),
+    path(
+        "/send/invites",
+        SendInviteView.as_view(),
+         name = "send-invite"
+    ),
 ]
