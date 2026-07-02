@@ -5,9 +5,11 @@ from apps.property.models import (
     Mortgage,
     Tenant,
     ComplianceAndCertification,
-    UploadDocument, Finance,
+    UploadDocument,
+    Finance,
 )
 from common.models import Media, DocumentFile
+from common.serializers import PropertySlimSerializer
 
 
 class MediaSerializer(serializers.ModelSerializer):
@@ -38,6 +40,7 @@ class PropertySerializer(serializers.ModelSerializer):
     class Meta:
         model = Property
         fields = [
+            "id",
             "alias",
             "property_name",
             "property_type",
@@ -170,12 +173,18 @@ class MortgageSerializers(serializers.ModelSerializer):
             instance.mortgage_documents.add(doc_file)
         return instance
 
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        representation["property"] = PropertySlimSerializer(instance.property).data
+        return representation
+
 
 class TenantSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tenant
         fields = [
             "alias",
+            "avatar",
             "first_name",
             "last_name",
             "email",
@@ -193,6 +202,11 @@ class TenantSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "alias",
         ]
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        representation["property"] = PropertySlimSerializer(instance.property).data
+        return representation
 
 
 class ComplianceAndCertificationSerializers(serializers.ModelSerializer):
@@ -243,7 +257,7 @@ class UploadDocumentSerializer(serializers.ModelSerializer):
             ".xlsx",
             ".jpg",
             ".jpeg",
-            ".png"
+            ".png",
         ]
         limit = 50 * 1024 * 1024
         for file in files:
@@ -251,7 +265,9 @@ class UploadDocumentSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(f"{file.name} exceeds 50MB limit.")
             ext = os.path.splitext(file.name)[1].lower()
             if ext not in allowed_extensions:
-                raise serializers.ValidationError(f"{file.name} has an unsupported file type.")
+                raise serializers.ValidationError(
+                    f"{file.name} has an unsupported file type."
+                )
 
     def create(self, validated_data):
         uploaded_files = validated_data.pop("uploaded_files", [])
@@ -276,12 +292,9 @@ class UploadDocumentSerializer(serializers.ModelSerializer):
             instance.files.add(doc_file)
         return instance
 
+
 class FinanceSerializer(serializers.ModelSerializer):
-    receipt_files = DocumentFileSerializer(
-        many=True,
-        read_only=True,
-        source="receipt"
-    )
+    receipt_files = DocumentFileSerializer(many=True, read_only=True, source="receipt")
     uploaded_receipt = serializers.ListField(
         child=serializers.FileField(),
         write_only=True,

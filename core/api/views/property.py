@@ -52,6 +52,7 @@ class PropertyDetailView(RetrieveUpdateDestroyAPIView):
 class MortgageListView(ListCreateAPIView):
     serializer_class = MortgageSerializers
     permission_classes = [IsAuthenticated]
+    search_fields = ["property__property_name", "lender_name"]
 
     def get_queryset(self):
         organisation = self.request.user.get_organisation()
@@ -84,7 +85,13 @@ class MortgageDetailView(RetrieveUpdateDestroyAPIView):
 class TenantListView(ListCreateAPIView):
     serializer_class = TenantSerializer
     permission_classes = [IsAuthenticated]
-    search_fields = ["first_name", "last_name", "email", "phone"]
+    search_fields = [
+        "property__property_name",
+        "first_name",
+        "last_name",
+        "email",
+        "phone",
+    ]
 
     def get_queryset(self):
         organisation = self.request.user.get_organisation()
@@ -110,7 +117,7 @@ class TenantDetailView(RetrieveUpdateDestroyAPIView):
 class ComplianceAndCertificationListView(ListCreateAPIView):
     serializer_class = ComplianceAndCertificationSerializers
     permission_classes = [IsAuthenticated]
-    search_fields = ["certification_type", "notes", "certification_number"]
+    search_fields = ["property__property_name", "certification_number"]
 
     def get_queryset(self):
         organisation = self.request.user.get_organisation()
@@ -138,6 +145,7 @@ class ComplianceAndCertificationDetailView(RetrieveUpdateDestroyAPIView):
 class UploadDocumentListCreateApiView(ListCreateAPIView):
     serializer_class = UploadDocumentSerializer
     permission_classes = [IsAuthenticated]
+    search_fields = ["property__property_name", "document_name"]
 
     def get_queryset(self):
         organisation = self.request.user.get_organisation()
@@ -169,6 +177,7 @@ class UploadDocumentRetrieveAPIView(RetrieveUpdateDestroyAPIView):
 class FinanceListView(ListCreateAPIView):
     serializer_class = FinanceSerializer
     permission_classes = [IsAuthenticated]
+    search_fields = ["property__property_name"]
 
     def get_queryset(self):
         organisation = self.request.user.get_organisation()
