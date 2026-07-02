@@ -91,7 +91,7 @@ class Mortgage(CreatedAtUpdatedAtBaseModel):
     )
 
     def __str__(self):
-        return f"{self.lender_name} - {self.mortgage_account_number}"
+        return f"{self.lender_name}"
 
 
 class Tenant(CreatedAtUpdatedAtBaseModel):

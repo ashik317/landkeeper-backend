@@ -109,3 +109,24 @@ class EmailVerification(CreatedAtUpdatedAtBaseModel):
     @staticmethod
     def make_code():
         return ''.join(random.choices(string.digits, k=6))
+
+class InviteUser(CreatedAtUpdatedAtBaseModel):
+    email = models.EmailField(unique=True)
+    role = models.CharField(
+        max_length=64,
+        choices=UserRoleChoices.choices,
+        default=UserRoleChoices.LANDLORD
+    )
+    message = models.TextField(null=True, blank=True)
+    organisation = models.ForeignKey(
+        "organisation.Organisation",
+        on_delete=models.CASCADE,
+        related_name="invites",
+        verbose_name=_("Organisation"),
+    )
+
+    class Meta:
+        ordering = ["-created_at", "-updated_at"]
+
+    def __str__(self):
+        return f"{self.email} - {self.role}"
