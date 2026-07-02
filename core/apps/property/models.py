@@ -81,6 +81,9 @@ class Mortgage(CreatedAtUpdatedAtBaseModel):
     start_date = models.DateField(blank=True, null=True)
     end_date = models.DateField(blank=True, null=True)
     broker_notes = models.TextField(blank=True, null=True)
+    mortgage_documents = models.ManyToManyField(
+        DocumentFile, blank=True, related_name="mortgages"
+    )
 
     # FK
     property = models.ForeignKey(
@@ -102,6 +105,7 @@ class Tenant(CreatedAtUpdatedAtBaseModel):
     last_name = models.CharField(max_length=64)
     email = models.EmailField(blank=True, null=True)
     phone = models.CharField(max_length=20, blank=True, null=True)
+    image = models.ImageField(upload_to="tenants/", blank=True, null=True)
     rent_amount = models.DecimalField(
         max_digits=10, decimal_places=2, blank=True, null=True
     )
