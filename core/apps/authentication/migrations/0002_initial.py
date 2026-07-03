@@ -10,19 +10,31 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('authentication', '0001_initial'),
-        ('organisation', '0001_initial'),
+        ("authentication", "0001_initial"),
+        ("organisation", "0001_initial"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='inviteuser',
-            name='organisation',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='invites', to='organisation.organisation', verbose_name='Organisation'),
+            model_name="inviteuser",
+            name="organisation",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="invites",
+                to="organisation.organisation",
+                verbose_name="Organisation",
+            ),
         ),
         migrations.AddField(
-            model_name='inviteuser',
-            name='updated_by',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='updated_%(class)s_set', to=settings.AUTH_USER_MODEL, verbose_name='Updated By'),
+            model_name="inviteuser",
+            name="updated_by",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="updated_%(class)s_set",
+                to=settings.AUTH_USER_MODEL,
+                verbose_name="Updated By",
+            ),
         ),
     ]

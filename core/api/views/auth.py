@@ -9,12 +9,12 @@ from dj_rest_auth.registration.views import SocialLoginView
 from dj_rest_auth.views import LoginView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
-from api.utils import send_password_reset_email, send_verification_email
-from apps.authentication.models import (
-    User,
-    EmailVerification,
-    InviteUser
+from api.utils import (
+    send_password_reset_email,
+    send_verification_email,
+    send_invite_email,
 )
+from apps.authentication.models import User, EmailVerification, InviteUser
 from urllib.parse import urlencode
 from django.http import HttpResponseRedirect
 from django.conf import settings
@@ -30,9 +30,10 @@ from ..serializers.auth import (
     UserProfileSerializer,
     EmailVerifySerializer,
     InviteUserSerializer,
-    AcceptInviteSerializer
+    AcceptInviteSerializer,
 )
 from django.shortcuts import get_object_or_404
+
 
 class AccountRegistrationView(CreateAPIView):
     serializer_class = UserRegistrationSerializer
@@ -45,6 +46,7 @@ class AccountRegistrationView(CreateAPIView):
         user = serializer.save()
         create_default_organisation(user)
 
+
 class EmailVerifyView(APIView):
     permission_classes = [AllowAny]
 
@@ -54,8 +56,9 @@ class EmailVerifyView(APIView):
         serializer.save()
         return Response(
             {"detail": "Email verified successfully. You can now log in."},
-            status=status.HTTP_200_OK
+            status=status.HTTP_200_OK,
         )
+
 
 class ResendVerificationView(APIView):
     permission_classes = [AllowAny]
@@ -65,8 +68,7 @@ class ResendVerificationView(APIView):
 
         if not email:
             return Response(
-                {"detail": "Email is required."},
-                status=status.HTTP_400_BAD_REQUEST
+                {"detail": "Email is required."}, status=status.HTTP_400_BAD_REQUEST
             )
 
         try:
@@ -74,7 +76,7 @@ class ResendVerificationView(APIView):
         except User.DoesNotExist:
             return Response(
                 {"detail": "No unverified user found with this email."},
-                status=status.HTTP_404_NOT_FOUND
+                status=status.HTTP_404_NOT_FOUND,
             )
 
         code = EmailVerification.make_code()
@@ -92,9 +94,9 @@ class ResendVerificationView(APIView):
             )
         send_verification_email(user, code)
         return Response(
-            {"detail": "Verification code resent."},
-            status=status.HTTP_200_OK
+            {"detail": "Verification code resent."}, status=status.HTTP_200_OK
         )
+
 
 class CustomLoginView(LoginView):
     permission_classes = [AllowAny]
@@ -254,6 +256,7 @@ class ChangePasswordView(APIView):
             {"detail": "Password changed successfully."}, status=status.HTTP_200_OK
         )
 
+
 class LogoutAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -264,7 +267,7 @@ class LogoutAPIView(APIView):
             if not refresh_token:
                 return Response(
                     {"error": "Refresh token is required."},
-                    status=status.HTTP_400_BAD_REQUEST
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
             token = RefreshToken(refresh_token)
             token.blacklist()
@@ -277,7 +280,7 @@ class LogoutAPIView(APIView):
         except TokenError as e:
             return Response(
                 {"error": "Invalid or expired token."},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
 
@@ -301,14 +304,14 @@ class SendInviteView(APIView):
         if email.lower() == request.user.email.lower():
             return Response(
                 {"detail": "You cannot invite yourself."},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         organisation = request.user.get_organisation()
         if not organisation:
             return Response(
                 {"detail": "You are not part of any organisation."},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         invite, created = InviteUser.objects.get_or_create(
@@ -326,84 +329,16 @@ class SendInviteView(APIView):
             invite.updated_by = request.user
             invite.save()
 
-        query = urlencode({"token": str(invite.alias)})
-        invite_link = f"{settings.FRONTEND_URL}/auth/accept-invite?{query}"
-
-        inviter_name = request.user.get_full_name() or request.user.email
-        role_display = invite.get_role_display()  # or humanize_role(invite.role)
-
-        html_content = f"""
-        <div style="background-color: #f4f5f7; padding: 40px 20px; font-family: 'Helvetica Neue', Arial, sans-serif;">
-          <div style="max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 12px;
-                      overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
-
-            <div style="background-color: #2563eb; padding: 28px 32px;">
-              <h1 style="margin: 0; color: #ffffff; font-size: 20px; font-weight: 600;">
-                You're Invited
-              </h1>
-            </div>
-
-            <div style="padding: 32px;">
-              <p style="margin: 0 0 16px; font-size: 15px; color: #111827; line-height: 1.6;">
-                Hi,
-              </p>
-              <p style="margin: 0 0 20px; font-size: 15px; color: #111827; line-height: 1.6;">
-                <strong>{inviter_name}</strong> has invited you to join
-                <strong>{organisation.name}</strong> as a
-                <span style="background-color: #eff6ff; color: #2563eb; padding: 2px 10px;
-                             border-radius: 999px; font-size: 13px; font-weight: 600;">
-                  {role_display}
-                </span>
-              </p>
-
-              {f'''
-              <div style="background-color: #f9fafb; border-left: 3px solid #2563eb;
-                          padding: 14px 16px; margin: 0 0 24px; border-radius: 4px;">
-                <p style="margin: 0; font-size: 14px; color: #4b5563; font-style: italic; line-height: 1.5;">
-                  "{invite.message}"
-                </p>
-              </div>
-              ''' if invite.message else ''}
-
-              <div style="text-align: center; margin: 32px 0;">
-                <a href="{invite_link}"
-                   style="background-color: #2563eb; color: #ffffff; padding: 14px 36px;
-                          text-decoration: none; border-radius: 8px; display: inline-block;
-                          font-weight: 600; font-size: 15px;">
-                  Accept Invite
-                </a>
-              </div>
-
-              <p style="margin: 0 0 6px; font-size: 12px; color: #9ca3af; text-align: center;">
-                Or copy and paste this link into your browser:
-              </p>
-              <p style="margin: 0; font-size: 12px; color: #2563eb; text-align: center; word-break: break-all;">
-                <a href="{invite_link}" style="color: #2563eb;">{invite_link}</a>
-              </p>
-            </div>
-
-            <div style="background-color: #f9fafb; padding: 20px 32px; border-top: 1px solid #e5e7eb;">
-              <p style="margin: 0; font-size: 12px; color: #9ca3af; text-align: center;">
-                If you weren't expecting this invite, you can safely ignore this email.
-              </p>
-            </div>
-
-          </div>
-        </div>
-        """
-
-        send_mail(
-            subject=f"You're invited to join {organisation.name}",
-            message=f"{inviter_name} invited you to join {organisation.name} as {role_display}. Accept here: {invite_link}",
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[invite.email],
-            html_message=html_content,
+        send_invite_email(
+            invite=invite,
+            organisation=organisation,
+            inviter_name=request.user.get_full_name() or request.user.email,
         )
 
         return Response(
-            InviteUserSerializer(invite).data,
-            status=status.HTTP_201_CREATED
+            InviteUserSerializer(invite).data, status=status.HTTP_201_CREATED
         )
+
 
 class AcceptInviteView(APIView):
     permission_classes = []
@@ -425,5 +360,5 @@ class AcceptInviteView(APIView):
                 "message": "Account created successfully",
                 "organisation": organisation.name if organisation else None,
             },
-            status=status.HTTP_201_CREATED
+            status=status.HTTP_201_CREATED,
         )

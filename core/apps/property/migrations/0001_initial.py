@@ -12,169 +12,659 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('common', '0001_initial'),
-        ('organisation', '0001_initial'),
+        ("common", "0001_initial"),
+        ("organisation", "0001_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='Property',
+            name="Property",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('alias', models.UUIDField(db_index=True, default=uuid.uuid4, editable=False, unique=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('user_ip', models.GenericIPAddressField(blank=True, editable=False, null=True)),
-                ('property_name', models.CharField(max_length=255)),
-                ('property_type', models.CharField(choices=[('RESIDENTIAL', 'Residential'), ('HMO', 'HMO'), ('COMMERCIAL', 'Commercial'), ('MIXED_USE', 'Mixed Use'), ('HOLIDAY_LET', 'Holiday Let')], default='RESIDENTIAL', max_length=20)),
-                ('status', models.CharField(choices=[('OCCUPIED', 'Occupied'), ('VACANT', 'Vacant'), ('UNDER_MAINTENANCE', 'Under Maintenance')], default='OCCUPIED', max_length=50)),
-                ('address', models.CharField(max_length=255)),
-                ('purchase_price', models.DecimalField(blank=True, decimal_places=2, max_digits=10, null=True)),
-                ('current_value', models.DecimalField(blank=True, decimal_places=2, max_digits=10, null=True)),
-                ('purchase_date', models.DateField(blank=True, null=True)),
-                ('bedrooms', models.PositiveIntegerField(blank=True, null=True)),
-                ('bathrooms', models.PositiveIntegerField(blank=True, null=True)),
-                ('rent_per_month', models.DecimalField(blank=True, decimal_places=2, max_digits=10, null=True)),
-                ('notes', models.TextField(blank=True, null=True)),
-                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_%(class)s_set', to=settings.AUTH_USER_MODEL, verbose_name='Created By')),
-                ('documents', models.ManyToManyField(blank=True, related_name='property_documents', to='common.media')),
-                ('organisation', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='organisation_properties', to='organisation.organisation')),
-                ('updated_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='updated_%(class)s_set', to=settings.AUTH_USER_MODEL, verbose_name='Updated By')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "alias",
+                    models.UUIDField(
+                        db_index=True, default=uuid.uuid4, editable=False, unique=True
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "user_ip",
+                    models.GenericIPAddressField(blank=True, editable=False, null=True),
+                ),
+                ("property_name", models.CharField(max_length=255)),
+                (
+                    "property_type",
+                    models.CharField(
+                        choices=[
+                            ("RESIDENTIAL", "Residential"),
+                            ("HMO", "HMO"),
+                            ("COMMERCIAL", "Commercial"),
+                            ("MIXED_USE", "Mixed Use"),
+                            ("HOLIDAY_LET", "Holiday Let"),
+                        ],
+                        default="RESIDENTIAL",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("OCCUPIED", "Occupied"),
+                            ("VACANT", "Vacant"),
+                            ("UNDER_MAINTENANCE", "Under Maintenance"),
+                        ],
+                        default="OCCUPIED",
+                        max_length=50,
+                    ),
+                ),
+                ("address", models.CharField(max_length=255)),
+                (
+                    "purchase_price",
+                    models.DecimalField(
+                        blank=True, decimal_places=2, max_digits=10, null=True
+                    ),
+                ),
+                (
+                    "current_value",
+                    models.DecimalField(
+                        blank=True, decimal_places=2, max_digits=10, null=True
+                    ),
+                ),
+                ("purchase_date", models.DateField(blank=True, null=True)),
+                ("bedrooms", models.PositiveIntegerField(blank=True, null=True)),
+                ("bathrooms", models.PositiveIntegerField(blank=True, null=True)),
+                (
+                    "rent_per_month",
+                    models.DecimalField(
+                        blank=True, decimal_places=2, max_digits=10, null=True
+                    ),
+                ),
+                ("notes", models.TextField(blank=True, null=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="created_%(class)s_set",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Created By",
+                    ),
+                ),
+                (
+                    "documents",
+                    models.ManyToManyField(
+                        blank=True, related_name="property_documents", to="common.media"
+                    ),
+                ),
+                (
+                    "organisation",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="organisation_properties",
+                        to="organisation.organisation",
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="updated_%(class)s_set",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Updated By",
+                    ),
+                ),
             ],
             options={
-                'ordering': ('-created_at',),
-                'abstract': False,
+                "ordering": ("-created_at",),
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='Mortgage',
+            name="Mortgage",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('alias', models.UUIDField(db_index=True, default=uuid.uuid4, editable=False, unique=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('user_ip', models.GenericIPAddressField(blank=True, editable=False, null=True)),
-                ('lender_name', models.CharField(max_length=255)),
-                ('product_type', models.CharField(choices=[('FIXED_RATE', 'Fixed Rate'), ('VARIABLE_RATE', 'Variable Rate'), ('TRACKER', 'Tracker'), ('OFFSET', 'Offset')], default='FIXED_RATE', max_length=50)),
-                ('interest_rate', models.DecimalField(blank=True, decimal_places=2, max_digits=5, null=True)),
-                ('loan_amount', models.DecimalField(blank=True, decimal_places=2, max_digits=12, null=True)),
-                ('outstanding_balance', models.DecimalField(blank=True, decimal_places=2, max_digits=10, null=True)),
-                ('monthly_payment', models.DecimalField(blank=True, decimal_places=2, max_digits=10, null=True)),
-                ('term', models.PositiveIntegerField(blank=True, null=True)),
-                ('start_date', models.DateField(blank=True, null=True)),
-                ('end_date', models.DateField(blank=True, null=True)),
-                ('broker_notes', models.TextField(blank=True, null=True)),
-                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_%(class)s_set', to=settings.AUTH_USER_MODEL, verbose_name='Created By')),
-                ('mortgage_documents', models.ManyToManyField(blank=True, related_name='mortgages', to='common.documentfile')),
-                ('organisation', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='organisation_mortgages', to='organisation.organisation')),
-                ('updated_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='updated_%(class)s_set', to=settings.AUTH_USER_MODEL, verbose_name='Updated By')),
-                ('property', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='property_mortgages', to='property.property')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "alias",
+                    models.UUIDField(
+                        db_index=True, default=uuid.uuid4, editable=False, unique=True
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "user_ip",
+                    models.GenericIPAddressField(blank=True, editable=False, null=True),
+                ),
+                ("lender_name", models.CharField(max_length=255)),
+                (
+                    "product_type",
+                    models.CharField(
+                        choices=[
+                            ("FIXED_RATE", "Fixed Rate"),
+                            ("VARIABLE_RATE", "Variable Rate"),
+                            ("TRACKER", "Tracker"),
+                            ("OFFSET", "Offset"),
+                        ],
+                        default="FIXED_RATE",
+                        max_length=50,
+                    ),
+                ),
+                (
+                    "interest_rate",
+                    models.DecimalField(
+                        blank=True, decimal_places=2, max_digits=5, null=True
+                    ),
+                ),
+                (
+                    "loan_amount",
+                    models.DecimalField(
+                        blank=True, decimal_places=2, max_digits=12, null=True
+                    ),
+                ),
+                (
+                    "outstanding_balance",
+                    models.DecimalField(
+                        blank=True, decimal_places=2, max_digits=10, null=True
+                    ),
+                ),
+                (
+                    "monthly_payment",
+                    models.DecimalField(
+                        blank=True, decimal_places=2, max_digits=10, null=True
+                    ),
+                ),
+                ("term", models.PositiveIntegerField(blank=True, null=True)),
+                ("start_date", models.DateField(blank=True, null=True)),
+                ("end_date", models.DateField(blank=True, null=True)),
+                ("broker_notes", models.TextField(blank=True, null=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="created_%(class)s_set",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Created By",
+                    ),
+                ),
+                (
+                    "mortgage_documents",
+                    models.ManyToManyField(
+                        blank=True, related_name="mortgages", to="common.documentfile"
+                    ),
+                ),
+                (
+                    "organisation",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="organisation_mortgages",
+                        to="organisation.organisation",
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="updated_%(class)s_set",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Updated By",
+                    ),
+                ),
+                (
+                    "property",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="property_mortgages",
+                        to="property.property",
+                    ),
+                ),
             ],
             options={
-                'ordering': ('-created_at',),
-                'abstract': False,
+                "ordering": ("-created_at",),
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='Finance',
+            name="Finance",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('alias', models.UUIDField(db_index=True, default=uuid.uuid4, editable=False, unique=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('user_ip', models.GenericIPAddressField(blank=True, editable=False, null=True)),
-                ('type', models.CharField(choices=[('INCOME', 'Income'), ('EXPENSE', 'Expense')], default='INCOME', max_length=20)),
-                ('category', models.CharField(blank=True, choices=[('RENTAL_INCOME', 'Rental Income'), ('MORTGAGE_PAYMENT', 'Mortgage Payment'), ('REPAIRS', 'Repairs'), ('INSURANCE', 'Insurance'), ('SERVICE_CHARGES', 'Service Charges'), ('UTILITIES', 'Utilities'), ('MANAGEMENT_FEES', 'Management Fees'), ('TAX', 'Tax'), ('OTHER', 'Other')], max_length=20, null=True)),
-                ('amount', models.DecimalField(blank=True, decimal_places=2, max_digits=20, null=True)),
-                ('date', models.DateField(blank=True, null=True)),
-                ('description', models.TextField(blank=True, null=True)),
-                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_%(class)s_set', to=settings.AUTH_USER_MODEL, verbose_name='Created By')),
-                ('organisation', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='finance_organisation', to='organisation.organisation')),
-                ('receipt', models.ManyToManyField(blank=True, related_name='finance_documents', to='common.documentfile')),
-                ('updated_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='updated_%(class)s_set', to=settings.AUTH_USER_MODEL, verbose_name='Updated By')),
-                ('property', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='finance_property', to='property.property')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "alias",
+                    models.UUIDField(
+                        db_index=True, default=uuid.uuid4, editable=False, unique=True
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "user_ip",
+                    models.GenericIPAddressField(blank=True, editable=False, null=True),
+                ),
+                (
+                    "type",
+                    models.CharField(
+                        choices=[("INCOME", "Income"), ("EXPENSE", "Expense")],
+                        default="INCOME",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "category",
+                    models.CharField(
+                        blank=True,
+                        choices=[
+                            ("RENTAL_INCOME", "Rental Income"),
+                            ("MORTGAGE_PAYMENT", "Mortgage Payment"),
+                            ("REPAIRS", "Repairs"),
+                            ("INSURANCE", "Insurance"),
+                            ("SERVICE_CHARGES", "Service Charges"),
+                            ("UTILITIES", "Utilities"),
+                            ("MANAGEMENT_FEES", "Management Fees"),
+                            ("TAX", "Tax"),
+                            ("OTHER", "Other"),
+                        ],
+                        max_length=20,
+                        null=True,
+                    ),
+                ),
+                (
+                    "amount",
+                    models.DecimalField(
+                        blank=True, decimal_places=2, max_digits=20, null=True
+                    ),
+                ),
+                ("date", models.DateField(blank=True, null=True)),
+                ("description", models.TextField(blank=True, null=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="created_%(class)s_set",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Created By",
+                    ),
+                ),
+                (
+                    "organisation",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="finance_organisation",
+                        to="organisation.organisation",
+                    ),
+                ),
+                (
+                    "receipt",
+                    models.ManyToManyField(
+                        blank=True,
+                        related_name="finance_documents",
+                        to="common.documentfile",
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="updated_%(class)s_set",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Updated By",
+                    ),
+                ),
+                (
+                    "property",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="finance_property",
+                        to="property.property",
+                    ),
+                ),
             ],
             options={
-                'ordering': ('-created_at',),
-                'abstract': False,
+                "ordering": ("-created_at",),
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='ComplianceAndCertification',
+            name="ComplianceAndCertification",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('alias', models.UUIDField(db_index=True, default=uuid.uuid4, editable=False, unique=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('user_ip', models.GenericIPAddressField(blank=True, editable=False, null=True)),
-                ('certificate_type', models.CharField(choices=[('GAS_SAFETY_CERTIFICATE', 'Gas Safety Certificate'), ('EPC_CERTIFICATE', 'EPC Certificate'), ('ELECTRICAL_SAFETY_CERTIFICATE', 'Electrical Safety Certificate'), ('FIRE_RISK_ASSESSMENT', 'Fire Risk Assessment'), ('HMO_LICENCE', 'HMO Licence'), ('PAT_TESTING', 'PAT Testing'), ('LEGIONELLA_ASSESSMENT', 'Legionella Assessment'), ('INSURANCE_DOCUMENT', 'Insurance Document')], default='GAS_SAFETY_CERTIFICATE', max_length=50)),
-                ('issue_date', models.DateField(blank=True, null=True)),
-                ('expiry_date', models.DateField(blank=True, null=True)),
-                ('certificate_number', models.PositiveIntegerField(blank=True, null=True)),
-                ('issued_by', models.CharField(blank=True, max_length=255, null=True)),
-                ('certificate_file', models.FileField(blank=True, null=True, upload_to=apps.property.utils.certificate_file_upload_path)),
-                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_%(class)s_set', to=settings.AUTH_USER_MODEL, verbose_name='Created By')),
-                ('organisation', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='organisation_certificates', to='organisation.organisation')),
-                ('updated_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='updated_%(class)s_set', to=settings.AUTH_USER_MODEL, verbose_name='Updated By')),
-                ('property', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='compliance_certificates', to='property.property')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "alias",
+                    models.UUIDField(
+                        db_index=True, default=uuid.uuid4, editable=False, unique=True
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "user_ip",
+                    models.GenericIPAddressField(blank=True, editable=False, null=True),
+                ),
+                (
+                    "certificate_type",
+                    models.CharField(
+                        choices=[
+                            ("GAS_SAFETY_CERTIFICATE", "Gas Safety Certificate"),
+                            ("EPC_CERTIFICATE", "EPC Certificate"),
+                            (
+                                "ELECTRICAL_SAFETY_CERTIFICATE",
+                                "Electrical Safety Certificate",
+                            ),
+                            ("FIRE_RISK_ASSESSMENT", "Fire Risk Assessment"),
+                            ("HMO_LICENCE", "HMO Licence"),
+                            ("PAT_TESTING", "PAT Testing"),
+                            ("LEGIONELLA_ASSESSMENT", "Legionella Assessment"),
+                            ("INSURANCE_DOCUMENT", "Insurance Document"),
+                        ],
+                        default="GAS_SAFETY_CERTIFICATE",
+                        max_length=50,
+                    ),
+                ),
+                ("issue_date", models.DateField(blank=True, null=True)),
+                ("expiry_date", models.DateField(blank=True, null=True)),
+                (
+                    "certificate_number",
+                    models.PositiveIntegerField(blank=True, null=True),
+                ),
+                ("issued_by", models.CharField(blank=True, max_length=255, null=True)),
+                (
+                    "certificate_file",
+                    models.FileField(
+                        blank=True,
+                        null=True,
+                        upload_to=apps.property.utils.certificate_file_upload_path,
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="created_%(class)s_set",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Created By",
+                    ),
+                ),
+                (
+                    "organisation",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="organisation_certificates",
+                        to="organisation.organisation",
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="updated_%(class)s_set",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Updated By",
+                    ),
+                ),
+                (
+                    "property",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="compliance_certificates",
+                        to="property.property",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Compliance and Certification',
-                'verbose_name_plural': 'Compliance and Certifications',
+                "verbose_name": "Compliance and Certification",
+                "verbose_name_plural": "Compliance and Certifications",
             },
         ),
         migrations.CreateModel(
-            name='Tenant',
+            name="Tenant",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('alias', models.UUIDField(db_index=True, default=uuid.uuid4, editable=False, unique=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('user_ip', models.GenericIPAddressField(blank=True, editable=False, null=True)),
-                ('avatar', models.ImageField(blank=True, null=True, upload_to=apps.property.utils.tenant_avatar_upload_path)),
-                ('first_name', models.CharField(max_length=64)),
-                ('last_name', models.CharField(max_length=64)),
-                ('email', models.EmailField(blank=True, max_length=254, null=True)),
-                ('phone', models.CharField(blank=True, max_length=20, null=True)),
-                ('image', models.ImageField(blank=True, null=True, upload_to='tenants/')),
-                ('rent_amount', models.DecimalField(blank=True, decimal_places=2, max_digits=10, null=True)),
-                ('deposit', models.DecimalField(blank=True, decimal_places=2, max_digits=10, null=True)),
-                ('tenancy_start_date', models.DateField(blank=True, null=True)),
-                ('tenancy_end_date', models.DateField(blank=True, null=True)),
-                ('employment_details', models.TextField(blank=True, null=True)),
-                ('guarantor_name', models.CharField(blank=True, max_length=128, null=True)),
-                ('notes', models.TextField(blank=True, null=True)),
-                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_%(class)s_set', to=settings.AUTH_USER_MODEL, verbose_name='Created By')),
-                ('organisation', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='organisation_tenants', to='organisation.organisation')),
-                ('property', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='property_tenants', to='property.property')),
-                ('updated_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='updated_%(class)s_set', to=settings.AUTH_USER_MODEL, verbose_name='Updated By')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "alias",
+                    models.UUIDField(
+                        db_index=True, default=uuid.uuid4, editable=False, unique=True
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "user_ip",
+                    models.GenericIPAddressField(blank=True, editable=False, null=True),
+                ),
+                (
+                    "avatar",
+                    models.ImageField(
+                        blank=True,
+                        null=True,
+                        upload_to=apps.property.utils.tenant_avatar_upload_path,
+                    ),
+                ),
+                ("first_name", models.CharField(max_length=64)),
+                ("last_name", models.CharField(max_length=64)),
+                ("email", models.EmailField(blank=True, max_length=254, null=True)),
+                ("phone", models.CharField(blank=True, max_length=20, null=True)),
+                (
+                    "image",
+                    models.ImageField(blank=True, null=True, upload_to="tenants/"),
+                ),
+                (
+                    "rent_amount",
+                    models.DecimalField(
+                        blank=True, decimal_places=2, max_digits=10, null=True
+                    ),
+                ),
+                (
+                    "deposit",
+                    models.DecimalField(
+                        blank=True, decimal_places=2, max_digits=10, null=True
+                    ),
+                ),
+                ("tenancy_start_date", models.DateField(blank=True, null=True)),
+                ("tenancy_end_date", models.DateField(blank=True, null=True)),
+                ("employment_details", models.TextField(blank=True, null=True)),
+                (
+                    "guarantor_name",
+                    models.CharField(blank=True, max_length=128, null=True),
+                ),
+                ("notes", models.TextField(blank=True, null=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="created_%(class)s_set",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Created By",
+                    ),
+                ),
+                (
+                    "organisation",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="organisation_tenants",
+                        to="organisation.organisation",
+                    ),
+                ),
+                (
+                    "property",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="property_tenants",
+                        to="property.property",
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="updated_%(class)s_set",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Updated By",
+                    ),
+                ),
             ],
             options={
-                'ordering': ('-created_at',),
-                'abstract': False,
+                "ordering": ("-created_at",),
+                "abstract": False,
             },
         ),
         migrations.CreateModel(
-            name='UploadDocument',
+            name="UploadDocument",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('alias', models.UUIDField(db_index=True, default=uuid.uuid4, editable=False, unique=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('user_ip', models.GenericIPAddressField(blank=True, editable=False, null=True)),
-                ('document_category', models.CharField(blank=True, choices=[('MORTGAGE_DOCUMENTS', 'Mortgage Documents'), ('TENANCY_AGREEMENT', 'Tenancy Agreement'), ('CERTIFICATE', 'Certificate'), ('INSURANCE', 'Insurance'), ('INVOICE', 'Invoice'), ('TAX_DOCUMENT', 'Tax Document'), ('PROPERTY_PHOTO', 'Property Photo'), ('LEGAL_DOCUMENT', 'Legal Document')], max_length=50, null=True)),
-                ('document_name', models.CharField(blank=True, max_length=100, null=True)),
-                ('tags', models.TextField(blank=True, null=True)),
-                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_%(class)s_set', to=settings.AUTH_USER_MODEL, verbose_name='Created By')),
-                ('files', models.ManyToManyField(blank=True, related_name='upload_documents', to='common.documentfile')),
-                ('organisation', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='upload_documents', to='organisation.organisation')),
-                ('property', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='upload_documents', to='property.property')),
-                ('updated_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='updated_%(class)s_set', to=settings.AUTH_USER_MODEL, verbose_name='Updated By')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "alias",
+                    models.UUIDField(
+                        db_index=True, default=uuid.uuid4, editable=False, unique=True
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "user_ip",
+                    models.GenericIPAddressField(blank=True, editable=False, null=True),
+                ),
+                (
+                    "document_category",
+                    models.CharField(
+                        blank=True,
+                        choices=[
+                            ("MORTGAGE_DOCUMENTS", "Mortgage Documents"),
+                            ("TENANCY_AGREEMENT", "Tenancy Agreement"),
+                            ("CERTIFICATE", "Certificate"),
+                            ("INSURANCE", "Insurance"),
+                            ("INVOICE", "Invoice"),
+                            ("TAX_DOCUMENT", "Tax Document"),
+                            ("PROPERTY_PHOTO", "Property Photo"),
+                            ("LEGAL_DOCUMENT", "Legal Document"),
+                        ],
+                        max_length=50,
+                        null=True,
+                    ),
+                ),
+                (
+                    "document_name",
+                    models.CharField(blank=True, max_length=100, null=True),
+                ),
+                ("tags", models.TextField(blank=True, null=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="created_%(class)s_set",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Created By",
+                    ),
+                ),
+                (
+                    "files",
+                    models.ManyToManyField(
+                        blank=True,
+                        related_name="upload_documents",
+                        to="common.documentfile",
+                    ),
+                ),
+                (
+                    "organisation",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="upload_documents",
+                        to="organisation.organisation",
+                    ),
+                ),
+                (
+                    "property",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="upload_documents",
+                        to="property.property",
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="updated_%(class)s_set",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Updated By",
+                    ),
+                ),
             ],
             options={
-                'ordering': ('-created_at',),
-                'abstract': False,
+                "ordering": ("-created_at",),
+                "abstract": False,
             },
         ),
     ]

@@ -8,7 +8,5 @@ class IsLandlord(permissions.BasePermission):
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
-        organisation_user = OrganisationUser.objects.filter(
-            user=request.user
-        ).first()
+        organisation_user = OrganisationUser.objects.filter(user=request.user).first()
         return bool(organisation_user and organisation_user.role == "LANDLORD")

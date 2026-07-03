@@ -26,18 +26,9 @@ class OrganisationSerializer(serializers.ModelSerializer):
 class OrganisationUserMinimalSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = [
-            "alias",
-            "email",
-            "first_name",
-            "last_name",
-            "phone",
-            "profile_image"
-        ]
-        read_only_fields = [
-            "alias",
-            "email"
-        ]
+        fields = ["alias", "email", "first_name", "last_name", "phone", "profile_image"]
+        read_only_fields = ["alias", "email"]
+
 
 class OrganisationUserSerializer(serializers.ModelSerializer):
     user = OrganisationUserMinimalSerializer()

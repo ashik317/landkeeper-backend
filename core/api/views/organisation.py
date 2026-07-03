@@ -4,14 +4,15 @@ from rest_framework.generics import (
     RetrieveUpdateAPIView,
     ListCreateAPIView,
     RetrieveUpdateDestroyAPIView,
-    ListAPIView
+    ListAPIView,
 )
 from rest_framework.permissions import IsAuthenticated
 from apps.organisation.models import Organisation, OrganisationUser
 from api.serializers.organisation import (
     OrganisationSerializer,
-    OrganisationUserSerializer
+    OrganisationUserSerializer,
 )
+
 
 class OrganisationListView(ListAPIView):
     serializer_class = OrganisationSerializer
@@ -23,19 +24,25 @@ class OrganisationListView(ListAPIView):
             is_active=True,
         )
 
+
 class OrganisationDetailView(RetrieveUpdateAPIView):
     serializer_class = OrganisationSerializer
     permission_classes = [IsAuthenticated]
 
     def get_object(self):
         try:
-            return Organisation.objects.filter(
-                slug=self.kwargs["organisation_slug"],
-                organisation_users__user=self.request.user,
-                is_active=True,
-            ).distinct().get()
+            return (
+                Organisation.objects.filter(
+                    slug=self.kwargs["organisation_slug"],
+                    organisation_users__user=self.request.user,
+                    is_active=True,
+                )
+                .distinct()
+                .get()
+            )
         except Organisation.DoesNotExist:
             raise NotFound("Organisation not found.")
+
 
 class OrganisationUserListView(ListAPIView):
     permission_classes = [IsAuthenticated]

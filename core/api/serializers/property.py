@@ -25,11 +25,8 @@ class MediaSerializer(serializers.ModelSerializer):
 class DocumentFileSerializer(serializers.ModelSerializer):
     class Meta:
         model = DocumentFile
-        fields = [
-            "id",
-            "file",
-            "description"
-        ]
+        fields = ["id", "file", "description"]
+
 
 class PropertySerializer(serializers.ModelSerializer):
     documents_data = serializers.ListField(
@@ -148,7 +145,9 @@ class MortgageSerializers(serializers.ModelSerializer):
                 raise serializers.ValidationError(f"{file.name} exceeds 50MB limit.")
             ext = os.path.splitext(file.name)[1].lower()
             if ext not in allowed_extensions:
-                raise serializers.ValidationError(f"{file.name} has an unsupported file type.")
+                raise serializers.ValidationError(
+                    f"{file.name} has an unsupported file type."
+                )
 
     def create(self, validated_data):
         uploaded_files = validated_data.pop("mortgage_documents", [])
@@ -229,6 +228,7 @@ class ComplianceAndCertificationSerializers(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
 
 class UploadDocumentSerializer(serializers.ModelSerializer):
     files = DocumentFileSerializer(many=True, read_only=True)

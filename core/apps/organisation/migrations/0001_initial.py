@@ -18,50 +18,180 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
-            name='Organisation',
+            name="Organisation",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('alias', models.UUIDField(db_index=True, default=uuid.uuid4, editable=False, unique=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('user_ip', models.GenericIPAddressField(blank=True, editable=False, null=True)),
-                ('name', models.CharField(db_index=True, max_length=200)),
-                ('slug', autoslug.fields.AutoSlugField(allow_unicode=True, always_update=True, editable=False, populate_from='name', unique=True)),
-                ('description', models.TextField(blank=True)),
-                ('logo', common.models.TimestampThumbnailImageField(blank=True, null=True, upload_to='organisation/logo')),
-                ('profile_image', common.models.TimestampThumbnailImageField(blank=True, null=True, upload_to='organisation/profile')),
-                ('primary_mobile', models.CharField(blank=True, max_length=20, null=True)),
-                ('other_contact', models.CharField(blank=True, max_length=64, null=True)),
-                ('contact_person', models.CharField(blank=True, max_length=64, null=True)),
-                ('website', models.URLField(blank=True, null=True)),
-                ('address', models.TextField(blank=True, null=True)),
-                ('is_active', models.BooleanField(default=True)),
-                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_%(class)s_set', to=settings.AUTH_USER_MODEL, verbose_name='Created By')),
-                ('updated_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='updated_%(class)s_set', to=settings.AUTH_USER_MODEL, verbose_name='Updated By')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "alias",
+                    models.UUIDField(
+                        db_index=True, default=uuid.uuid4, editable=False, unique=True
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "user_ip",
+                    models.GenericIPAddressField(blank=True, editable=False, null=True),
+                ),
+                ("name", models.CharField(db_index=True, max_length=200)),
+                (
+                    "slug",
+                    autoslug.fields.AutoSlugField(
+                        allow_unicode=True,
+                        always_update=True,
+                        editable=False,
+                        populate_from="name",
+                        unique=True,
+                    ),
+                ),
+                ("description", models.TextField(blank=True)),
+                (
+                    "logo",
+                    common.models.TimestampThumbnailImageField(
+                        blank=True, null=True, upload_to="organisation/logo"
+                    ),
+                ),
+                (
+                    "profile_image",
+                    common.models.TimestampThumbnailImageField(
+                        blank=True, null=True, upload_to="organisation/profile"
+                    ),
+                ),
+                (
+                    "primary_mobile",
+                    models.CharField(blank=True, max_length=20, null=True),
+                ),
+                (
+                    "other_contact",
+                    models.CharField(blank=True, max_length=64, null=True),
+                ),
+                (
+                    "contact_person",
+                    models.CharField(blank=True, max_length=64, null=True),
+                ),
+                ("website", models.URLField(blank=True, null=True)),
+                ("address", models.TextField(blank=True, null=True)),
+                ("is_active", models.BooleanField(default=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="created_%(class)s_set",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Created By",
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="updated_%(class)s_set",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Updated By",
+                    ),
+                ),
             ],
             options={
-                'ordering': ['-created_at', '-updated_at'],
+                "ordering": ["-created_at", "-updated_at"],
             },
         ),
         migrations.CreateModel(
-            name='OrganisationUser',
+            name="OrganisationUser",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('alias', models.UUIDField(db_index=True, default=uuid.uuid4, editable=False, unique=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('user_ip', models.GenericIPAddressField(blank=True, editable=False, null=True)),
-                ('role', models.CharField(blank=True, choices=[('LANDLORD', 'Landlord'), ('ADMIN', 'Admin'), ('LETTING_AGENT', 'Letting Agent')], default='LANDLORD', max_length=64, null=True, verbose_name='Role')),
-                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_%(class)s_set', to=settings.AUTH_USER_MODEL, verbose_name='Created By')),
-                ('organisation', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='organisation_users', to='organisation.organisation', verbose_name='Organisation')),
-                ('updated_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='updated_%(class)s_set', to=settings.AUTH_USER_MODEL, verbose_name='Updated By')),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='organisation_users', to=settings.AUTH_USER_MODEL, verbose_name='User')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "alias",
+                    models.UUIDField(
+                        db_index=True, default=uuid.uuid4, editable=False, unique=True
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "user_ip",
+                    models.GenericIPAddressField(blank=True, editable=False, null=True),
+                ),
+                (
+                    "role",
+                    models.CharField(
+                        blank=True,
+                        choices=[
+                            ("LANDLORD", "Landlord"),
+                            ("ADMIN", "Admin"),
+                            ("LETTING_AGENT", "Letting Agent"),
+                        ],
+                        default="LANDLORD",
+                        max_length=64,
+                        null=True,
+                        verbose_name="Role",
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="created_%(class)s_set",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Created By",
+                    ),
+                ),
+                (
+                    "organisation",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="organisation_users",
+                        to="organisation.organisation",
+                        verbose_name="Organisation",
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="updated_%(class)s_set",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="Updated By",
+                    ),
+                ),
+                (
+                    "user",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="organisation_users",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="User",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'Organisation User',
-                'verbose_name_plural': 'Organisation Users',
-                'ordering': ['-created_at', '-updated_at'],
-                'unique_together': {('user', 'organisation')},
+                "verbose_name": "Organisation User",
+                "verbose_name_plural": "Organisation Users",
+                "ordering": ["-created_at", "-updated_at"],
+                "unique_together": {("user", "organisation")},
             },
         ),
     ]

@@ -58,13 +58,14 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
             return user
 
+
 class EmailVerifySerializer(serializers.Serializer):
     email = serializers.EmailField()
-    code  = serializers.CharField(max_length=6)
+    code = serializers.CharField(max_length=6)
 
     def validate(self, data):
         try:
-            user = User.objects.get(email=data['email'])
+            user = User.objects.get(email=data["email"])
         except User.DoesNotExist:
             raise serializers.ValidationError("Invalid email.")
 
@@ -77,18 +78,20 @@ class EmailVerifySerializer(serializers.Serializer):
             raise serializers.ValidationError("Email already verified.")
 
         if verification.is_expired():
-            raise serializers.ValidationError("Code has expired. Please request a new one.")
+            raise serializers.ValidationError(
+                "Code has expired. Please request a new one."
+            )
 
-        if verification.code != data['code']:
+        if verification.code != data["code"]:
             raise serializers.ValidationError("Invalid code.")
 
-        data['user'] = user
-        data['verification'] = verification
+        data["user"] = user
+        data["verification"] = verification
         return data
 
     def save(self):
-        user = self.validated_data['user']
-        verification = self.validated_data['verification']
+        user = self.validated_data["user"]
+        verification = self.validated_data["verification"]
 
         verification.is_verified = True
         verification.save()
@@ -173,13 +176,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = [
-            "email",
-            "role",
-            "is_active",
-            "created_at",
-            "updated_at"
-        ]
+        read_only_fields = ["email", "role", "is_active", "created_at", "updated_at"]
 
     def get_role(self, obj):
         if obj.is_superuser:
@@ -230,7 +227,9 @@ class AcceptInviteSerializer(serializers.Serializer):
             raise serializers.ValidationError("Invalid invite link")
 
         if User.objects.filter(email=invite.email).exists():
-            raise serializers.ValidationError("An account with this email already exists")
+            raise serializers.ValidationError(
+                "An account with this email already exists"
+            )
 
         return data
 

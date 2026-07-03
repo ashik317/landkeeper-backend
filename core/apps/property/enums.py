@@ -53,9 +53,11 @@ class DocumentCategoryType(models.TextChoices):
     PROPERTY_PHOTO = "PROPERTY_PHOTO", _("Property Photo")
     LEGAL_DOCUMENT = "LEGAL_DOCUMENT", _("Legal Document")
 
+
 class TransactionType(models.TextChoices):
     INCOME = "INCOME", _("Income")
     EXPENSE = "EXPENSE", _("Expense")
+
 
 class Category(models.TextChoices):
     RENTAL_INCOME = "RENTAL_INCOME", _("Rental Income")

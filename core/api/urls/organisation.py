@@ -15,12 +15,12 @@ urlpatterns = [
     ),
     path(
         "/<slug:organisation_slug>/users",
-         OrganisationUserListView.as_view(),
-         name="organisation-user-list"
+        OrganisationUserListView.as_view(),
+        name="organisation-user-list",
     ),
     path(
         "/<slug:organisation_slug>/users/<uuid:alias>",
         OrganisationUserDetailView.as_view(),
-        name="organisation-user-detail"
+        name="organisation-user-detail",
     ),
 ]

@@ -10,8 +10,7 @@ def create_default_organisation(user):
         return
 
     base_name = (
-        f"{user.first_name} {user.last_name}".strip()
-        or user.email.split("@")[0]
+        f"{user.first_name} {user.last_name}".strip() or user.email.split("@")[0]
     )
     org_name = f"{base_name}'s Organisation"
 
