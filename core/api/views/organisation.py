@@ -1,3 +1,4 @@
+from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import NotFound
 from rest_framework.generics import (
     RetrieveUpdateAPIView,
@@ -36,31 +37,24 @@ class OrganisationDetailView(RetrieveUpdateAPIView):
         except Organisation.DoesNotExist:
             raise NotFound("Organisation not found.")
 
-class OrganisationUserListCreateView(ListCreateAPIView):
+class OrganisationUserListView(ListAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = OrganisationUserSerializer
 
     def get_queryset(self):
         return OrganisationUser.objects.filter(
             organisation__slug=self.kwargs["organisation_slug"]
-        )
-
-    def get_serializer_context(self):
-        context = super().get_serializer_context()
-        context["organisation"] = Organisation.objects.get(
-            slug=self.kwargs["organisation_slug"]
-        )
-        return context
+        ).exclude(role="LANDLORD")
 
 
-class OrganisationUserDetailView(RetrieveUpdateDestroyAPIView):
+class OrganisationUserDetailView(RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = OrganisationUserSerializer
 
     def get_queryset(self):
         return OrganisationUser.objects.filter(
             organisation__slug=self.kwargs["organisation_slug"],
-            user__id=self.kwargs["pk"],
+            user__alias=self.kwargs["alias"],
         )
 
     def get_object(self):
@@ -71,7 +65,7 @@ class OrganisationUserDetailView(RetrieveUpdateDestroyAPIView):
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        context["organisation"] = Organisation.objects.get(
-            slug=self.kwargs["organisation_slug"]
+        context["organisation"] = get_object_or_404(
+            Organisation, slug=self.kwargs["organisation_slug"]
         )
         return context
