@@ -23,6 +23,7 @@ from rest_framework.views import APIView
 from rest_framework.generics import CreateAPIView, RetrieveUpdateAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from apps.authentication.permission import IsLandlord
 from apps.authentication.signals import create_default_organisation
 from ..serializers.auth import (
     UserRegistrationSerializer,
@@ -279,6 +280,7 @@ class LogoutAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+
 class UserProfileView(RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = UserProfileSerializer
@@ -286,8 +288,9 @@ class UserProfileView(RetrieveUpdateAPIView):
     def get_object(self):
         return self.request.user
 
+
 class SendInviteView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsLandlord]
 
     def post(self, request):
         serializer = InviteUserSerializer(data=request.data)
@@ -316,13 +319,37 @@ class SendInviteView(APIView):
             invite.updated_by = request.user
             invite.save()
 
-        invite_link = f"{settings.FRONTEND_URL}/accept-invite/{invite.alias}"
+        query = urlencode({"token": str(invite.alias)})
+        invite_link = f"{settings.FRONTEND_URL}/accept-invite?{query}"
+
+        html_content = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;
+                    padding: 24px; border: 1px solid #e5e7eb; border-radius: 8px;">
+            <p>Hi,</p>
+            <p>{request.user.get_full_name() or request.user.email} has invited you to join
+               <strong>{organisation.name}</strong> as a <strong>{invite.role}</strong>.</p>
+            {f'<p style="color:#555;">"{invite.message}"</p>' if invite.message else ''}
+            <p style="text-align: center; margin: 24px 0;">
+                <a href="{invite_link}"
+                   style="background-color: #2563eb; color: #ffffff; padding: 12px 24px;
+                          text-decoration: none; border-radius: 6px; display: inline-block;
+                          font-weight: bold;">
+                    Accept Invite
+                </a>
+            </p>
+            <p style="font-size: 13px; color: #6b7280;">
+                Or copy and paste this link into your browser:<br>
+                <a href="{invite_link}">{invite_link}</a>
+            </p>
+        </div>
+        """
 
         send_mail(
             subject="You're invited to join",
             message=f"Click the link to create your account: {invite_link}",
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[invite.email],
+            html_message=html_content,
         )
 
         return Response(
