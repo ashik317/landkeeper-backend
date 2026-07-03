@@ -296,6 +296,14 @@ class SendInviteView(APIView):
         serializer = InviteUserSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        email = serializer.validated_data["email"]
+
+        if email.lower() == request.user.email.lower():
+            return Response(
+                {"detail": "You cannot invite yourself."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         organisation = request.user.get_organisation()
         if not organisation:
             return Response(
@@ -303,7 +311,6 @@ class SendInviteView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        email = serializer.validated_data["email"]
         invite, created = InviteUser.objects.get_or_create(
             email=email,
             defaults={
@@ -320,7 +327,7 @@ class SendInviteView(APIView):
             invite.save()
 
         query = urlencode({"token": str(invite.alias)})
-        invite_link = f"{settings.FRONTEND_URL}/accept-invite?{query}"
+        invite_link = f"{settings.FRONTEND_URL}/auth/accept-invite?{query}"
 
         html_content = f"""
         <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;
