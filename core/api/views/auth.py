@@ -329,31 +329,72 @@ class SendInviteView(APIView):
         query = urlencode({"token": str(invite.alias)})
         invite_link = f"{settings.FRONTEND_URL}/auth/accept-invite?{query}"
 
+        inviter_name = request.user.get_full_name() or request.user.email
+        role_display = invite.get_role_display()  # or humanize_role(invite.role)
+
         html_content = f"""
-        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;
-                    padding: 24px; border: 1px solid #e5e7eb; border-radius: 8px;">
-            <p>Hi,</p>
-            <p>{request.user.get_full_name() or request.user.email} has invited you to join
-               <strong>{organisation.name}</strong> as a <strong>{invite.role}</strong>.</p>
-            {f'<p style="color:#555;">"{invite.message}"</p>' if invite.message else ''}
-            <p style="text-align: center; margin: 24px 0;">
+        <div style="background-color: #f4f5f7; padding: 40px 20px; font-family: 'Helvetica Neue', Arial, sans-serif;">
+          <div style="max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 12px;
+                      overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
+
+            <div style="background-color: #2563eb; padding: 28px 32px;">
+              <h1 style="margin: 0; color: #ffffff; font-size: 20px; font-weight: 600;">
+                You're Invited
+              </h1>
+            </div>
+
+            <div style="padding: 32px;">
+              <p style="margin: 0 0 16px; font-size: 15px; color: #111827; line-height: 1.6;">
+                Hi,
+              </p>
+              <p style="margin: 0 0 20px; font-size: 15px; color: #111827; line-height: 1.6;">
+                <strong>{inviter_name}</strong> has invited you to join
+                <strong>{organisation.name}</strong> as a
+                <span style="background-color: #eff6ff; color: #2563eb; padding: 2px 10px;
+                             border-radius: 999px; font-size: 13px; font-weight: 600;">
+                  {role_display}
+                </span>
+              </p>
+
+              {f'''
+              <div style="background-color: #f9fafb; border-left: 3px solid #2563eb;
+                          padding: 14px 16px; margin: 0 0 24px; border-radius: 4px;">
+                <p style="margin: 0; font-size: 14px; color: #4b5563; font-style: italic; line-height: 1.5;">
+                  "{invite.message}"
+                </p>
+              </div>
+              ''' if invite.message else ''}
+
+              <div style="text-align: center; margin: 32px 0;">
                 <a href="{invite_link}"
-                   style="background-color: #2563eb; color: #ffffff; padding: 12px 24px;
-                          text-decoration: none; border-radius: 6px; display: inline-block;
-                          font-weight: bold;">
-                    Accept Invite
+                   style="background-color: #2563eb; color: #ffffff; padding: 14px 36px;
+                          text-decoration: none; border-radius: 8px; display: inline-block;
+                          font-weight: 600; font-size: 15px;">
+                  Accept Invite
                 </a>
-            </p>
-            <p style="font-size: 13px; color: #6b7280;">
-                Or copy and paste this link into your browser:<br>
-                <a href="{invite_link}">{invite_link}</a>
-            </p>
+              </div>
+
+              <p style="margin: 0 0 6px; font-size: 12px; color: #9ca3af; text-align: center;">
+                Or copy and paste this link into your browser:
+              </p>
+              <p style="margin: 0; font-size: 12px; color: #2563eb; text-align: center; word-break: break-all;">
+                <a href="{invite_link}" style="color: #2563eb;">{invite_link}</a>
+              </p>
+            </div>
+
+            <div style="background-color: #f9fafb; padding: 20px 32px; border-top: 1px solid #e5e7eb;">
+              <p style="margin: 0; font-size: 12px; color: #9ca3af; text-align: center;">
+                If you weren't expecting this invite, you can safely ignore this email.
+              </p>
+            </div>
+
+          </div>
         </div>
         """
 
         send_mail(
-            subject="You're invited to join",
-            message=f"Click the link to create your account: {invite_link}",
+            subject=f"You're invited to join {organisation.name}",
+            message=f"{inviter_name} invited you to join {organisation.name} as {role_display}. Accept here: {invite_link}",
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[invite.email],
             html_message=html_content,
