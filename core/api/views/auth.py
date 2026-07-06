@@ -339,6 +339,51 @@ class SendInviteView(APIView):
             InviteUserSerializer(invite).data, status=status.HTTP_201_CREATED
         )
 
+class ResendInviteView(APIView):
+    permission_classes = [IsAuthenticated, IsLandlord]
+
+    def post(self, request, alias):
+        organisation = request.user.get_organisation()
+        if not organisation:
+            return Response(
+                {"detail": "You are not part of any organisation."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        invite = get_object_or_404(
+            InviteUser, alias=alias, organisation=organisation
+        )
+
+        send_invite_email(
+            invite=invite,
+            organisation=organisation,
+            inviter_name=request.user.get_full_name() or request.user.email,
+        )
+
+        return Response(
+            {"detail": "Invite resent successfully."},
+            status=status.HTTP_200_OK,
+        )
+
+class DeleteInviteView(APIView):
+    permission_classes = [IsAuthenticated, IsLandlord]
+
+    def delete(self, request, alias):
+        organisation = request.user.get_organisation()
+        if not organisation:
+            return Response(
+                {"detail": "You are not part of any organisation."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        invite = get_object_or_404(
+            InviteUser, alias=alias, organisation=organisation
+        )
+        invite.delete()
+        return Response(
+            {"detail": "Invite deleted successfully."},
+            status=status.HTTP_200_OK,
+        )
 
 class AcceptInviteView(APIView):
     permission_classes = []

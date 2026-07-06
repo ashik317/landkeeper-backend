@@ -13,6 +13,8 @@ from api.views.auth import (
     LogoutAPIView,
     AcceptInviteView,
     SendInviteView,
+    DeleteInviteView,
+    ResendInviteView,
 )
 
 urlpatterns = [
@@ -37,4 +39,6 @@ urlpatterns = [
         name="accept-invite",
     ),
     path("/send/invites", SendInviteView.as_view(), name="send-invite"),
+    path("/invites/<uuid:alias>/resend", ResendInviteView.as_view(), name="resend-invite"),
+    path("/invites/<uuid:alias>", DeleteInviteView.as_view(), name="delete-invite"),
 ]
