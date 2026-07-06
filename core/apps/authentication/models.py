@@ -44,7 +44,10 @@ class User(AbstractBaseUser, PermissionsMixin, CreatedAtUpdatedAtBaseModel):
         db_index=True, max_length=24, unique=False, null=True, blank=True, default=None
     )
     title = models.CharField(
-        max_length=64, choices=NameTitleChoices.choices, default=NameTitleChoices.MR
+        max_length=64,
+        choices=NameTitleChoices.choices,
+        null=True,
+        blank=True,
     )
     first_name = models.CharField(max_length=64)
     middle_name = models.CharField(max_length=64, blank=True)
