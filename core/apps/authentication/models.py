@@ -86,8 +86,11 @@ class User(AbstractBaseUser, PermissionsMixin, CreatedAtUpdatedAtBaseModel):
         name = f"{self.first_name} {self.last_name}".strip()
         return f"{name or 'User'} - {self.email}"
 
+
 class EmailVerification(CreatedAtUpdatedAtBaseModel):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='email_verification')
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name="email_verification"
+    )
     code = models.CharField(max_length=6)
     is_verified = models.BooleanField(default=False)
     expires_at = models.DateTimeField(null=True, blank=True)
@@ -103,19 +106,18 @@ class EmailVerification(CreatedAtUpdatedAtBaseModel):
         return timezone.now() > self.expires_at
 
     def generate_code(self):
-        self.code = ''.join(random.choices(string.digits, k=6))
+        self.code = "".join(random.choices(string.digits, k=6))
         self.save()
 
     @staticmethod
     def make_code():
-        return ''.join(random.choices(string.digits, k=6))
+        return "".join(random.choices(string.digits, k=6))
+
 
 class InviteUser(CreatedAtUpdatedAtBaseModel):
     email = models.EmailField(unique=True)
     role = models.CharField(
-        max_length=64,
-        choices=UserRoleChoices.choices,
-        default=UserRoleChoices.LANDLORD
+        max_length=64, choices=UserRoleChoices.choices, default=UserRoleChoices.LANDLORD
     )
     message = models.TextField(null=True, blank=True)
     organisation = models.ForeignKey(

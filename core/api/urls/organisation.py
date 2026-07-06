@@ -3,24 +3,28 @@ from api.views.organisation import (
     OrganisationDetailView,
     OrganisationUserListView,
     OrganisationUserDetailView,
-    OrganisationListView,
+    OrganisationInviteUserView,
 )
 
 urlpatterns = [
-    path("", OrganisationListView.as_view(), name="organisation-list"),
     path(
-        "/<slug:organisation_slug>",
+        "",
         OrganisationDetailView.as_view(),
         name="organisation-detail",
     ),
     path(
-        "/<slug:organisation_slug>/users",
-         OrganisationUserListView.as_view(),
-         name="organisation-user-list"
+        "/users",
+        OrganisationUserListView.as_view(),
+        name="organisation-user-list",
     ),
     path(
-        "/<slug:organisation_slug>/users/<uuid:alias>",
+        "/invite-users",
+        OrganisationInviteUserView.as_view(),
+        name="organisation-invite-user-list",
+    ),
+    path(
+        "/users/<uuid:user_alias>",
         OrganisationUserDetailView.as_view(),
-        name="organisation-user-detail"
+        name="organisation-user-detail",
     ),
 ]

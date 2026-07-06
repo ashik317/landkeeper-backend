@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers
 from apps.authentication.models import EmailVerification, InviteUser
+from apps.authentication.enums import NameTitleChoices
 from apps.organisation.models import Organisation, OrganisationUser
 from apps.subscription.models import UserSubscription, SubscriptionPlan
 from api.utils import send_verification_email
@@ -58,13 +59,14 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
             return user
 
+
 class EmailVerifySerializer(serializers.Serializer):
     email = serializers.EmailField()
-    code  = serializers.CharField(max_length=6)
+    code = serializers.CharField(max_length=6)
 
     def validate(self, data):
         try:
-            user = User.objects.get(email=data['email'])
+            user = User.objects.get(email=data["email"])
         except User.DoesNotExist:
             raise serializers.ValidationError("Invalid email.")
 
@@ -77,18 +79,20 @@ class EmailVerifySerializer(serializers.Serializer):
             raise serializers.ValidationError("Email already verified.")
 
         if verification.is_expired():
-            raise serializers.ValidationError("Code has expired. Please request a new one.")
+            raise serializers.ValidationError(
+                "Code has expired. Please request a new one."
+            )
 
-        if verification.code != data['code']:
+        if verification.code != data["code"]:
             raise serializers.ValidationError("Invalid code.")
 
-        data['user'] = user
-        data['verification'] = verification
+        data["user"] = user
+        data["verification"] = verification
         return data
 
     def save(self):
-        user = self.validated_data['user']
-        verification = self.validated_data['verification']
+        user = self.validated_data["user"]
+        verification = self.validated_data["verification"]
 
         verification.is_verified = True
         verification.save()
@@ -173,13 +177,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = [
-            "email",
-            "role",
-            "is_active",
-            "created_at",
-            "updated_at"
-        ]
+        read_only_fields = ["email", "role", "is_active", "created_at", "updated_at"]
 
     def get_role(self, obj):
         if obj.is_superuser:
@@ -216,8 +214,13 @@ class InviteUserSerializer(serializers.ModelSerializer):
 
 
 class AcceptInviteSerializer(serializers.Serializer):
+    title = serializers.ChoiceField(choices=NameTitleChoices.choices)
     first_name = serializers.CharField(max_length=150)
+    middle_name = serializers.CharField(
+        max_length=150, required=False, allow_blank=True
+    )
     last_name = serializers.CharField(max_length=150)
+    phone = serializers.CharField(max_length=24, required=False, allow_blank=True)
     password = serializers.CharField(write_only=True)
     confirm_password = serializers.CharField(write_only=True)
 
@@ -230,7 +233,9 @@ class AcceptInviteSerializer(serializers.Serializer):
             raise serializers.ValidationError("Invalid invite link")
 
         if User.objects.filter(email=invite.email).exists():
-            raise serializers.ValidationError("An account with this email already exists")
+            raise serializers.ValidationError(
+                "An account with this email already exists"
+            )
 
         return data
 
@@ -239,9 +244,12 @@ class AcceptInviteSerializer(serializers.Serializer):
 
         with transaction.atomic():
             user = User.objects.create_user(
-                email=invite.email,
+                title=validated_data["title"],
                 first_name=validated_data["first_name"],
+                middle_name=validated_data["middle_name"],
                 last_name=validated_data["last_name"],
+                email=invite.email,
+                phone=validated_data["phone"],
                 password=validated_data["password"],
             )
 
