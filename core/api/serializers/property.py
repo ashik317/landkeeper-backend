@@ -229,24 +229,30 @@ class ComplianceAndCertificationSerializers(serializers.ModelSerializer):
             "updated_at",
         ]
 
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        representation["property"] = PropertySlimSerializer(instance.property).data
+        return representation
+
 
 class UploadDocumentSerializer(serializers.ModelSerializer):
     files = DocumentFileSerializer(many=True, read_only=True)
-    property_name = serializers.CharField(
-        source="property.property_name", read_only=True
-    )
 
     class Meta:
         model = UploadDocument
         fields = [
             "alias",
             "property",
-            "property_name",
             "document_category",
             "document_name",
             "tags",
             "files",
         ]
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        representation["property"] = PropertySlimSerializer(instance.property).data
+        return representation
 
     def _validate_files(self, files):
         allowed_extensions = [
@@ -321,6 +327,11 @@ class FinanceSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        representation["property"] = PropertySlimSerializer(instance.property).data
+        return representation
 
     def validate_uploaded_receipt(self, receipt):
         allowed_extensions = [

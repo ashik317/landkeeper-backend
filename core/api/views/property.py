@@ -121,7 +121,9 @@ class ComplianceAndCertificationListView(ListCreateAPIView):
         organisation = self.request.user.get_organisation()
         if not organisation:
             raise NotFound("Organisation not found for the user.")
-        return ComplianceAndCertification.objects.filter(organisation=organisation)
+        return ComplianceAndCertification.objects.filter(
+            organisation=organisation
+        ).order_by("-created_at")
 
     def perform_create(self, serializer):
         organisation = self.request.user.get_organisation()

@@ -3,7 +3,6 @@ from apps.authentication.models import InviteUser
 from apps.organisation.models import Organisation, OrganisationUser, User
 
 
-
 class OrganisationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Organisation
@@ -73,6 +72,7 @@ class OrganisationInviterUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = InviteUser
         fields = [
+            "alias",
             "email",
             "role",
             "message",
