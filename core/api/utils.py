@@ -5,6 +5,7 @@ from django.utils.http import urlsafe_base64_encode
 from django.utils.encoding import force_bytes
 from django.contrib.auth.tokens import default_token_generator
 from urllib.parse import urlencode
+from django.utils.html import escape
 
 
 def send_password_reset_email(user):
@@ -215,7 +216,9 @@ def send_invite_email(invite, organisation, inviter_name):
     query = urlencode({"token": str(invite.alias)})
     invite_link = f"{settings.FRONTEND_URL}/auth/accept-invite?{query}"
 
-    role_display = invite.get_role_display()
+    role_display = escape(invite.get_role_display())
+    inviter_name = escape(inviter_name)
+    organisation_name = escape(organisation.name)
 
     message_block = ""
     if invite.message:
@@ -223,7 +226,7 @@ def send_invite_email(invite, organisation, inviter_name):
         <div style="background-color: #f9fafb; border-left: 3px solid #2563eb;
                     padding: 14px 16px; margin: 0 0 24px; border-radius: 4px;">
             <p style="margin: 0; font-size: 14px; color: #4b5563; font-style: italic; line-height: 1.5;">
-                "{invite.message}"
+                "{escape(invite.message)}"
             </p>
         </div>
         """
@@ -245,7 +248,7 @@ def send_invite_email(invite, organisation, inviter_name):
           </p>
           <p style="margin: 0 0 20px; font-size: 15px; color: #111827; line-height: 1.6;">
             <strong>{inviter_name}</strong> has invited you to join
-            <strong>{organisation.name}</strong> as a
+            <strong>{organisation_name}</strong> as a
             <span style="background-color: #eff6ff; color: #2563eb; padding: 2px 10px;
                          border-radius: 999px; font-size: 13px; font-weight: 600;">
               {role_display}
@@ -282,8 +285,8 @@ def send_invite_email(invite, organisation, inviter_name):
     """
 
     send_mail(
-        subject=f"You're invited to join {organisation.name}",
-        message=f"{inviter_name} invited you to join {organisation.name} as {role_display}. Accept here: {invite_link}",
+        subject=f"You're invited to join {organisation_name}",
+        message=f"{inviter_name} invited you to join {organisation_name} as {role_display}. Accept here: {invite_link}",
         from_email=settings.DEFAULT_FROM_EMAIL,
         recipient_list=[invite.email],
         html_message=html_content,

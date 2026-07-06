@@ -1,7 +1,8 @@
 from rest_framework.exceptions import NotFound
 from rest_framework.generics import (
-    RetrieveUpdateAPIView,
     ListAPIView,
+    RetrieveUpdateAPIView,
+    RetrieveUpdateDestroyAPIView,
 )
 from rest_framework.permissions import IsAuthenticated
 
@@ -60,7 +61,7 @@ class OrganisationInviteUserView(ListAPIView):
         return InviteUser.objects.filter(organisation=organisation)
 
 
-class OrganisationUserDetailView(RetrieveUpdateAPIView):
+class OrganisationUserDetailView(RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = OrganisationUserSerializer
 
