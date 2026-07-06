@@ -1,9 +1,6 @@
-from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import NotFound
 from rest_framework.generics import (
     RetrieveUpdateAPIView,
-    ListCreateAPIView,
-    RetrieveUpdateDestroyAPIView,
     ListAPIView,
 )
 from rest_framework.permissions import IsAuthenticated
@@ -15,6 +12,17 @@ from api.serializers.organisation import (
     OrganisationUserSerializer,
     OrganisationInviterUserSerializer,
 )
+
+
+class OrganisationListView(ListAPIView):
+    serializer_class = OrganisationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Organisation.objects.filter(
+            organisation_users__user=self.request.user,
+            is_active=True,
+        )
 
 
 class OrganisationDetailView(RetrieveUpdateAPIView):

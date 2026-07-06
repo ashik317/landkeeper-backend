@@ -4,6 +4,7 @@ from django.core.mail import EmailMultiAlternatives
 from django.utils.http import urlsafe_base64_encode
 from django.utils.encoding import force_bytes
 from django.contrib.auth.tokens import default_token_generator
+from urllib.parse import urlencode
 
 
 def send_password_reset_email(user):
@@ -207,3 +208,83 @@ If you did not register, please ignore this email.
     email = EmailMultiAlternatives(subject, text_content, from_email, recipient_list)
     email.attach_alternative(html_content, "text/html")
     email.send(fail_silently=False)
+
+
+def send_invite_email(invite, organisation, inviter_name):
+    """Builds the invite link, HTML body, and sends the invite email."""
+    query = urlencode({"token": str(invite.alias)})
+    invite_link = f"{settings.FRONTEND_URL}/auth/accept-invite?{query}"
+
+    role_display = invite.get_role_display()
+
+    message_block = ""
+    if invite.message:
+        message_block = f"""
+        <div style="background-color: #f9fafb; border-left: 3px solid #2563eb;
+                    padding: 14px 16px; margin: 0 0 24px; border-radius: 4px;">
+            <p style="margin: 0; font-size: 14px; color: #4b5563; font-style: italic; line-height: 1.5;">
+                "{invite.message}"
+            </p>
+        </div>
+        """
+
+    html_content = f"""
+    <div style="background-color: #f4f5f7; padding: 40px 20px; font-family: 'Helvetica Neue', Arial, sans-serif;">
+      <div style="max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 12px;
+                  overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
+
+        <div style="background-color: #2563eb; padding: 28px 32px;">
+          <h1 style="margin: 0; color: #ffffff; font-size: 20px; font-weight: 600;">
+            You're Invited
+          </h1>
+        </div>
+
+        <div style="padding: 32px;">
+          <p style="margin: 0 0 16px; font-size: 15px; color: #111827; line-height: 1.6;">
+            Hi,
+          </p>
+          <p style="margin: 0 0 20px; font-size: 15px; color: #111827; line-height: 1.6;">
+            <strong>{inviter_name}</strong> has invited you to join
+            <strong>{organisation.name}</strong> as a
+            <span style="background-color: #eff6ff; color: #2563eb; padding: 2px 10px;
+                         border-radius: 999px; font-size: 13px; font-weight: 600;">
+              {role_display}
+            </span>
+          </p>
+
+          {message_block}
+
+          <div style="text-align: center; margin: 32px 0;">
+            <a href="{invite_link}"
+               style="background-color: #2563eb; color: #ffffff; padding: 14px 36px;
+                      text-decoration: none; border-radius: 8px; display: inline-block;
+                      font-weight: 600; font-size: 15px;">
+              Accept Invite
+            </a>
+          </div>
+
+          <p style="margin: 0 0 6px; font-size: 12px; color: #9ca3af; text-align: center;">
+            Or copy and paste this link into your browser:
+          </p>
+          <p style="margin: 0; font-size: 12px; color: #2563eb; text-align: center; word-break: break-all;">
+            <a href="{invite_link}" style="color: #2563eb;">{invite_link}</a>
+          </p>
+        </div>
+
+        <div style="background-color: #f9fafb; padding: 20px 32px; border-top: 1px solid #e5e7eb;">
+          <p style="margin: 0; font-size: 12px; color: #9ca3af; text-align: center;">
+            If you weren't expecting this invite, you can safely ignore this email.
+          </p>
+        </div>
+
+      </div>
+    </div>
+    """
+
+    send_mail(
+        subject=f"You're invited to join {organisation.name}",
+        message=f"{inviter_name} invited you to join {organisation.name} as {role_display}. Accept here: {invite_link}",
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[invite.email],
+        html_message=html_content,
+    )

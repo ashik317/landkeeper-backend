@@ -1,8 +1,7 @@
 from rest_framework import serializers
-
 from apps.authentication.models import InviteUser
 from apps.organisation.models import Organisation, OrganisationUser, User
-from api.serializers.auth import UserProfileSerializer
+
 
 
 class OrganisationSerializer(serializers.ModelSerializer):

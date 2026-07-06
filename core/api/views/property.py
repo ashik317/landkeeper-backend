@@ -76,9 +76,7 @@ class MortgageDetailView(RetrieveUpdateDestroyAPIView):
         if not organisation:
             raise NotFound("Organisation not found for the user.")
         return get_object_or_404(
-            Mortgage,
-            alias=self.kwargs["mortgage_alias"],
-            organisation=organisation
+            Mortgage, alias=self.kwargs["mortgage_alias"], organisation=organisation
         )
 
 

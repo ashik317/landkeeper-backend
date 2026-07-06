@@ -4,9 +4,15 @@ from api.views.organisation import (
     OrganisationUserListView,
     OrganisationUserDetailView,
     OrganisationInviteUserView,
+    OrganisationListView,
 )
 
 urlpatterns = [
+    path(
+    "/list",
+    OrganisationListView.as_view(),
+    name="organisation-list",
+    ),
     path(
         "",
         OrganisationDetailView.as_view(),
