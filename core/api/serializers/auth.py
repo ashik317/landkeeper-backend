@@ -161,6 +161,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 class UserProfileSerializer(serializers.ModelSerializer):
     role = serializers.SerializerMethodField()
+    has_usable_password = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -174,6 +175,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "phone",
             "profile_image",
             "is_active",
+            "has_usable_password",
             "created_at",
             "updated_at",
         ]
@@ -188,6 +190,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
                 if obj.organisation_users.exists()
                 else None
             )
+
+    def get_has_usable_password(self, obj):
+        return obj.has_usable_password()
 
 
 class CustomJWTSerializer(JWTSerializer):
