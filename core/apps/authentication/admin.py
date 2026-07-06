@@ -2,7 +2,9 @@ from django.contrib import admin
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.translation import gettext_lazy as _
-from apps.authentication.models import User
+from apps.authentication.models import User, InviteUser
+
+admin.site.register(InviteUser)
 
 
 @admin.register(User)

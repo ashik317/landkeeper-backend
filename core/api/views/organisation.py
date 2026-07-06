@@ -1,16 +1,16 @@
-from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import NotFound
 from rest_framework.generics import (
     RetrieveUpdateAPIView,
-    ListCreateAPIView,
-    RetrieveUpdateDestroyAPIView,
     ListAPIView,
 )
 from rest_framework.permissions import IsAuthenticated
+
+from apps.authentication.models import InviteUser
 from apps.organisation.models import Organisation, OrganisationUser
 from api.serializers.organisation import (
     OrganisationSerializer,
     OrganisationUserSerializer,
+    OrganisationInviterUserSerializer,
 )
 
 
@@ -30,18 +30,10 @@ class OrganisationDetailView(RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_object(self):
-        try:
-            return (
-                Organisation.objects.filter(
-                    slug=self.kwargs["organisation_slug"],
-                    organisation_users__user=self.request.user,
-                    is_active=True,
-                )
-                .distinct()
-                .get()
-            )
-        except Organisation.DoesNotExist:
+        organisation = self.request.user.get_organisation()
+        if not organisation:
             raise NotFound("Organisation not found.")
+        return organisation
 
 
 class OrganisationUserListView(ListAPIView):
@@ -49,9 +41,23 @@ class OrganisationUserListView(ListAPIView):
     serializer_class = OrganisationUserSerializer
 
     def get_queryset(self):
-        return OrganisationUser.objects.filter(
-            organisation__slug=self.kwargs["organisation_slug"]
-        ).exclude(role="LANDLORD")
+        organisation = self.request.user.get_organisation()
+        if not organisation:
+            raise NotFound("Organisation not found.")
+        return OrganisationUser.objects.filter(organisation=organisation).exclude(
+            role="LANDLORD"
+        )
+
+
+class OrganisationInviteUserView(ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = OrganisationInviterUserSerializer
+
+    def get_queryset(self):
+        organisation = self.request.user.get_organisation()
+        if not organisation:
+            raise NotFound("Organisation not found.")
+        return InviteUser.objects.filter(organisation=organisation)
 
 
 class OrganisationUserDetailView(RetrieveUpdateAPIView):
@@ -59,10 +65,13 @@ class OrganisationUserDetailView(RetrieveUpdateAPIView):
     serializer_class = OrganisationUserSerializer
 
     def get_queryset(self):
+        organisation = self.request.user.get_organisation()
+        if not organisation:
+            raise NotFound("Organisation not found.")
         return OrganisationUser.objects.filter(
-            organisation__slug=self.kwargs["organisation_slug"],
-            user__alias=self.kwargs["alias"],
-        )
+            organisation=organisation,
+            user__alias=self.kwargs["user_alias"],
+        ).exclude(role="LANDLORD")
 
     def get_object(self):
         try:
@@ -72,7 +81,5 @@ class OrganisationUserDetailView(RetrieveUpdateAPIView):
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        context["organisation"] = get_object_or_404(
-            Organisation, slug=self.kwargs["organisation_slug"]
-        )
+        context["organisation"] = self.request.user.get_organisation()
         return context

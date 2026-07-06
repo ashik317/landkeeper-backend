@@ -1,6 +1,7 @@
 from rest_framework import serializers
+from apps.authentication.models import InviteUser
 from apps.organisation.models import Organisation, OrganisationUser, User
-from api.serializers.auth import UserProfileSerializer
+
 
 
 class OrganisationSerializer(serializers.ModelSerializer):
@@ -26,7 +27,17 @@ class OrganisationSerializer(serializers.ModelSerializer):
 class OrganisationUserMinimalSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ["alias", "email", "first_name", "last_name", "phone", "profile_image"]
+        fields = [
+            "alias",
+            "title",
+            "first_name",
+            "middle_name",
+            "last_name",
+            "email",
+            "phone",
+            "profile_image",
+            "is_active",
+        ]
         read_only_fields = ["alias", "email"]
 
 
@@ -56,3 +67,19 @@ class OrganisationUserSerializer(serializers.ModelSerializer):
             user.save()
 
         return super().update(instance, validated_data)
+
+
+class OrganisationInviterUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InviteUser
+        fields = [
+            "email",
+            "role",
+            "message",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "created_at",
+            "updated_at",
+        ]

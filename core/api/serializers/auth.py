@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework import serializers
 from apps.authentication.models import EmailVerification, InviteUser
+from apps.authentication.enums import NameTitleChoices
 from apps.organisation.models import Organisation, OrganisationUser
 from apps.subscription.models import UserSubscription, SubscriptionPlan
 from api.utils import send_verification_email
@@ -213,8 +214,13 @@ class InviteUserSerializer(serializers.ModelSerializer):
 
 
 class AcceptInviteSerializer(serializers.Serializer):
+    title = serializers.ChoiceField(choices=NameTitleChoices.choices)
     first_name = serializers.CharField(max_length=150)
+    middle_name = serializers.CharField(
+        max_length=150, required=False, allow_blank=True
+    )
     last_name = serializers.CharField(max_length=150)
+    phone = serializers.CharField(max_length=24, required=False, allow_blank=True)
     password = serializers.CharField(write_only=True)
     confirm_password = serializers.CharField(write_only=True)
 
@@ -238,9 +244,12 @@ class AcceptInviteSerializer(serializers.Serializer):
 
         with transaction.atomic():
             user = User.objects.create_user(
-                email=invite.email,
+                title=validated_data["title"],
                 first_name=validated_data["first_name"],
+                middle_name=validated_data["middle_name"],
                 last_name=validated_data["last_name"],
+                email=invite.email,
+                phone=validated_data["phone"],
                 password=validated_data["password"],
             )
 
