@@ -218,23 +218,16 @@ class SetForgotPasswordView(APIView):
         )
 
 
-class ChangePasswordView(APIView):
+class UpdatePasswordView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        old_password = request.data.get("old_password")
         new_password = request.data.get("new_password")
         confirm_password = request.data.get("confirm_password")
 
-        if not all([old_password, new_password, confirm_password]):
+        if not new_password or not confirm_password:
             return Response(
-                {"detail": "All fields are required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if not request.user.check_password(old_password):
-            return Response(
-                {"detail": "Old password is incorrect."},
+                {"detail": "New password and confirm password are required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -244,17 +237,35 @@ class ChangePasswordView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if old_password == new_password:
-            return Response(
-                {"detail": "New password must be different from old password."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        user_has_password = request.user.has_usable_password()
+
+        if user_has_password:
+            old_password = request.data.get("old_password")
+            if not old_password:
+                return Response(
+                    {"detail": "Old password is required."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not request.user.check_password(old_password):
+                return Response(
+                    {"detail": "Old password is incorrect."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if old_password == new_password:
+                return Response(
+                    {"detail": "New password must be different from old password."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         request.user.set_password(new_password)
         request.user.save()
-        return Response(
-            {"detail": "Password changed successfully."}, status=status.HTTP_200_OK
+
+        detail = (
+            "Password changed successfully."
+            if user_has_password
+            else "Password set successfully. You can now log in with your email and password."
         )
+        return Response({"detail": detail}, status=status.HTTP_200_OK)
 
 
 class LogoutAPIView(APIView):

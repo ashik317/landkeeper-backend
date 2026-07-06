@@ -6,7 +6,7 @@ from api.views.auth import (
     CustomLoginView,
     SetForgotPasswordView,
     ForgotPasswordView,
-    ChangePasswordView,
+    UpdatePasswordView,
     UserProfileView,
     EmailVerifyView,
     ResendVerificationView,
@@ -31,7 +31,7 @@ urlpatterns = [
         SetForgotPasswordView.as_view(),
         name="set_forgot_password",
     ),
-    path("/change-password", ChangePasswordView.as_view(), name="change_password"),
+    path("/update-password", UpdatePasswordView.as_view(), name="change_password"),
     path("/profile", UserProfileView.as_view(), name="user-profile"),
     path(
         "/accept-invite/<uuid:alias>",
