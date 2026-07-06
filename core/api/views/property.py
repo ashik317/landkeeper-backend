@@ -115,7 +115,7 @@ class TenantDetailView(RetrieveUpdateDestroyAPIView):
 class ComplianceAndCertificationListView(ListCreateAPIView):
     serializer_class = ComplianceAndCertificationSerializers
     permission_classes = [IsAuthenticated]
-    search_fields = ["property__property_name", "certification_number"]
+    search_fields = ["property__property_name", "certificate_number"]
 
     def get_queryset(self):
         organisation = self.request.user.get_organisation()

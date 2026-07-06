@@ -161,7 +161,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 class UserProfileSerializer(serializers.ModelSerializer):
     role = serializers.SerializerMethodField()
-    has_usable_password = serializers.SerializerMethodField()
+    is_password_available = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -175,7 +175,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "phone",
             "profile_image",
             "is_active",
-            "has_usable_password",
+            "is_password_available",
             "created_at",
             "updated_at",
         ]
@@ -191,7 +191,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
                 else None
             )
 
-    def get_has_usable_password(self, obj):
+    def get_is_password_available(self, obj):
         return obj.has_usable_password()
 
 
