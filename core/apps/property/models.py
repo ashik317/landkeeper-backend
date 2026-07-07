@@ -138,7 +138,7 @@ class ComplianceAndCertification(CreatedAtUpdatedAtBaseModel):
     )
     issue_date = models.DateField(blank=True, null=True)
     expiry_date = models.DateField(blank=True, null=True)
-    certificate_number = models.PositiveIntegerField(blank=True, null=True)
+    certificate_number = models.CharField(max_length=255, blank=True, null=True)
     issued_by = models.CharField(max_length=255, blank=True, null=True)
     certificate_file = models.FileField(
         upload_to=certificate_file_upload_path, blank=True, null=True
