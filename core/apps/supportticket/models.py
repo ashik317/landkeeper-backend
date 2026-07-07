@@ -114,4 +114,6 @@ class SupportTicketFile(CreatedAtUpdatedAtBaseModel):
     def __str__(self):
         if self.ticket:
             return f"File for Ticket {self.ticket.ticket_id}"
-        return f"File for Comment #{self.comment.id}"
+        if self.comment:
+            return f"File for Comment #{self.comment.id}"
+        return f"Orphaned file #{self.id}"

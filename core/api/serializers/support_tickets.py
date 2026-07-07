@@ -69,23 +69,32 @@ class SupportTicketSerializer(serializers.ModelSerializer):
 
     def _generate_ticket_id(self, organisation):
         prefix = organisation.name[:3].upper()
+
         last_ticket = (
-            SupportTicket.objects.filter(ticket_id__startswith=f"{prefix}-")
+            SupportTicket.objects.filter(organisation=organisation)
+            .exclude(ticket_id="")
             .order_by("-ticket_id")
             .first()
         )
+
         if last_ticket:
             last_number = int(last_ticket.ticket_id.split("-")[1])
             next_number = last_number + 1
         else:
             next_number = 1
+
         return f"{prefix}-{next_number:08d}"
 
     def create(self, validated_data):
         upload_files = validated_data.pop("upload_files", [])
+
         organisation = validated_data.get("organisation")
-        if organisation:
-            validated_data["ticket_id"] = self._generate_ticket_id(organisation)
+        if not organisation:
+            raise serializers.ValidationError(
+                {"organisation": "A support ticket must be linked to an organisation."}
+            )
+
+        validated_data["ticket_id"] = self._generate_ticket_id(organisation)
 
         ticket = SupportTicket.objects.create(**validated_data)
 
@@ -141,16 +150,18 @@ class SupportTicketCommentSerializer(serializers.ModelSerializer):
         ]
 
     def get_replies(self, obj):
-        if obj.parent is None:
-            replies = obj.replies.all().order_by("created_at")
-            return SupportTicketCommentSerializer(
-                replies, many=True, context=self.context
-            ).data
-        return []
+        # No longer gated by obj.parent is None — every comment, at any
+        # depth, reports its own replies. This is what was hiding 3rd+
+        # level replies before.
+        replies = obj.replies.all().order_by("created_at")
+        return SupportTicketCommentSerializer(
+            replies, many=True, context=self.context
+        ).data
 
     def validate(self, attrs):
         parent = attrs.get("parent")
-        ticket = attrs.get("ticket") or getattr(self.instance, "ticket", None)
+        ticket = self.context.get("ticket")
+
         if parent and ticket and parent.ticket_id != ticket.id:
             raise serializers.ValidationError(
                 {"parent": "Parent comment must belong to the same ticket."}
