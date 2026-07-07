@@ -57,6 +57,7 @@ PROJECT_APPS = [
     "apps.organisation.apps.OrganisationConfig",
     "apps.property.apps.PropertyConfig",
     "apps.subscription.apps.SubscriptionConfig",
+    "apps.supportticket.apps.SupportticketConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PROJECT_APPS
