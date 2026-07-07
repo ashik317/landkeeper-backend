@@ -38,13 +38,6 @@ class SupportTicketFileSerializer(serializers.ModelSerializer):
         fields = ["alias", "file"]
 
 
-def _delete_files_from_storage(queryset):
-    """Delete both the DB rows and the underlying storage files."""
-    for support_file in queryset:
-        support_file.file.delete(save=False)
-    queryset.delete()
-
-
 class SupportTicketSerializer(serializers.ModelSerializer):
     created_by = SupportTicketUserSlimSerializer(read_only=True)
     files = SupportTicketFileSerializer(many=True, read_only=True)
@@ -74,8 +67,26 @@ class SupportTicketSerializer(serializers.ModelSerializer):
             "created_by",
         ]
 
+    def _generate_ticket_id(self, organisation):
+        prefix = organisation.name[:3].upper()
+        last_ticket = (
+            SupportTicket.objects.filter(ticket_id__startswith=f"{prefix}-")
+            .order_by("-ticket_id")
+            .first()
+        )
+        if last_ticket:
+            last_number = int(last_ticket.ticket_id.split("-")[1])
+            next_number = last_number + 1
+        else:
+            next_number = 1
+        return f"{prefix}-{next_number:08d}"
+
     def create(self, validated_data):
         upload_files = validated_data.pop("upload_files", [])
+        organisation = validated_data.get("organisation")
+        if organisation:
+            validated_data["ticket_id"] = self._generate_ticket_id(organisation)
+
         ticket = SupportTicket.objects.create(**validated_data)
 
         for file in upload_files:
@@ -91,7 +102,9 @@ class SupportTicketSerializer(serializers.ModelSerializer):
         instance.save()
 
         if upload_files is not None:
-            _delete_files_from_storage(instance.files.all())
+            for support_file in instance.files.all():
+                support_file.file.delete(save=False)
+            instance.files.all().delete()
 
             for file in upload_files:
                 SupportTicketFile.objects.create(ticket=instance, file=file)
