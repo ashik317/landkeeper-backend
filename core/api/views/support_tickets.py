@@ -91,7 +91,6 @@ class SupportTicketCommentListCreateView(ListCreateAPIView):
 
     def get_ticket(self):
         if not hasattr(self, "_ticket"):
-            ticket_qs = SupportTicketDetailView.as_view()
             user = self.request.user
             qs = SupportTicket.objects.all()
             if not user.is_superuser:
@@ -105,8 +104,13 @@ class SupportTicketCommentListCreateView(ListCreateAPIView):
         return (
             SupportTicketComment.objects.filter(ticket=ticket, parent__isnull=True)
             .select_related("author")
-            .prefetch_related("replies", "files")
+            .prefetch_related("replies__replies", "replies__files", "files")
         )
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["ticket"] = self.get_ticket()
+        return context
 
     def perform_create(self, serializer):
         serializer.save(author=self.request.user, ticket=self.get_ticket())
@@ -136,3 +140,9 @@ class SupportTicketCommentDetailView(RetrieveUpdateDestroyAPIView):
             alias=comment_alias,
             ticket=ticket,
         )
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        ticket_alias = self.kwargs.get("ticket_alias")
+        context["ticket"] = get_object_or_404(SupportTicket, alias=ticket_alias)
+        return context
