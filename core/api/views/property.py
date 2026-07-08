@@ -146,6 +146,7 @@ class UploadDocumentListCreateApiView(ListCreateAPIView):
     serializer_class = UploadDocumentSerializer
     permission_classes = [IsAuthenticated]
     search_fields = ["property__property_name", "document_name"]
+    filterset_fields = ["document_category"]
 
     def get_queryset(self):
         organisation = self.request.user.get_organisation()
