@@ -7,12 +7,14 @@ from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_decode
 from dj_rest_auth.registration.views import SocialLoginView
 from dj_rest_auth.views import LoginView
+from rest_framework.exceptions import NotFound
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 from api.utils import (
     send_password_reset_email,
     send_verification_email,
     send_invite_email,
+    send_tenant_invite_email,
 )
 from apps.authentication.models import User, EmailVerification, InviteUser
 from urllib.parse import urlencode
@@ -25,12 +27,14 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from apps.authentication.permission import IsLandlord
 from apps.authentication.signals import create_default_organisation
+from apps.property.models import Tenant
 from ..serializers.auth import (
     UserRegistrationSerializer,
     UserProfileSerializer,
     EmailVerifySerializer,
     InviteUserSerializer,
     AcceptInviteSerializer,
+    TenantAcceptInviteSerializer,
 )
 from django.shortcuts import get_object_or_404
 
@@ -415,6 +419,78 @@ class AcceptInviteView(APIView):
             {
                 "message": "Account created successfully",
                 "organisation": organisation.name if organisation else None,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+class TenantSendInviteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tenant_alias):
+        organisation = request.user.get_organisation()
+        if not organisation:
+            raise NotFound("Organisation not found for the user.")
+
+        tenant = get_object_or_404(
+            Tenant, alias=tenant_alias, organisation=organisation
+        )
+        if not tenant.email:
+            return Response({"detail": "Tenant has no email address."}, status=400)
+
+        send_tenant_invite_email(
+            tenant=tenant,
+            organisation=organisation,
+            inviter_name=request.user.get_full_name(),
+        )
+        return Response({"detail": "Invitation sent."})
+
+
+class TenantResendInviteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tenant_alias):
+        organisation = request.user.get_organisation()
+        if not organisation:
+            raise NotFound("Organisation not found for the user.")
+
+        tenant = get_object_or_404(
+            Tenant, alias=tenant_alias, organisation=organisation
+        )
+        if not tenant.email:
+            return Response({"detail": "Tenant has no email address."}, status=400)
+
+        send_tenant_invite_email(
+            tenant=tenant,
+            organisation=organisation,
+            inviter_name=request.user.get_full_name(),
+        )
+        return Response({"detail": "Invitation resent."})
+
+class TenantAcceptInviteView(APIView):
+    permission_classes = []
+
+    def post(self, request, tenant_alias):
+        tenant = get_object_or_404(Tenant, alias=tenant_alias)
+
+        if tenant.user_id:
+            return Response(
+                {"detail": "Invite already accepted."}, status=status.HTTP_400_BAD_REQUEST
+            )
+        if not tenant.email:
+            return Response(
+                {"detail": "Tenant has no email on file."}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = TenantAcceptInviteSerializer(
+            data=request.data,
+            context={"tenant": tenant},
+        )
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+
+        return Response(
+            {
+                "message": "Account created successfully. You can now log in.",
             },
             status=status.HTTP_201_CREATED,
         )

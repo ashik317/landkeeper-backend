@@ -291,3 +291,67 @@ def send_invite_email(invite, organisation, inviter_name):
         recipient_list=[invite.email],
         html_message=html_content,
     )
+
+def send_tenant_invite_email(tenant, organisation, inviter_name):
+    """Builds the tenant invite link, HTML body, and sends the invite email."""
+    query = urlencode({"token": str(tenant.alias)})
+    invite_link = f"{settings.FRONTEND_URL}/auth/accept-invite?{query}"
+
+    inviter_name = escape(inviter_name)
+    organisation_name = escape(organisation.name)
+    tenant_first_name = escape(tenant.first_name)
+
+    html_content = f"""
+    <div style="background-color: #f4f5f7; padding: 40px 20px; font-family: 'Helvetica Neue', Arial, sans-serif;">
+      <div style="max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 12px;
+                  overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
+
+        <div style="background-color: #2563eb; padding: 28px 32px;">
+          <h1 style="margin: 0; color: #ffffff; font-size: 20px; font-weight: 600;">
+            You're Invited
+          </h1>
+        </div>
+
+        <div style="padding: 32px;">
+          <p style="margin: 0 0 16px; font-size: 15px; color: #111827; line-height: 1.6;">
+            Hi {tenant_first_name},
+          </p>
+          <p style="margin: 0 0 20px; font-size: 15px; color: #111827; line-height: 1.6;">
+            <strong>{inviter_name}</strong> has invited you to join
+            <strong>{organisation_name}</strong> as a tenant.
+          </p>
+
+          <div style="text-align: center; margin: 32px 0;">
+            <a href="{invite_link}"
+               style="background-color: #2563eb; color: #ffffff; padding: 14px 36px;
+                      text-decoration: none; border-radius: 8px; display: inline-block;
+                      font-weight: 600; font-size: 15px;">
+              Accept Invite
+            </a>
+          </div>
+
+          <p style="margin: 0 0 6px; font-size: 12px; color: #9ca3af; text-align: center;">
+            Or copy and paste this link into your browser:
+          </p>
+          <p style="margin: 0; font-size: 12px; color: #2563eb; text-align: center; word-break: break-all;">
+            <a href="{invite_link}" style="color: #2563eb;">{invite_link}</a>
+          </p>
+        </div>
+
+        <div style="background-color: #f9fafb; padding: 20px 32px; border-top: 1px solid #e5e7eb;">
+          <p style="margin: 0; font-size: 12px; color: #9ca3af; text-align: center;">
+            If you weren't expecting this invite, you can safely ignore this email.
+          </p>
+        </div>
+
+      </div>
+    </div>
+    """
+
+    send_mail(
+        subject=f"You're invited to join {organisation_name}",
+        message=f"{inviter_name} invited you to join {organisation_name} as a tenant. Accept here: {invite_link}",
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[tenant.email],
+        html_message=html_content,
+    )
