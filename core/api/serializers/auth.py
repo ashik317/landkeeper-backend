@@ -267,3 +267,33 @@ class AcceptInviteSerializer(serializers.Serializer):
             invite.delete()
 
         return user
+
+class TenantAcceptInviteSerializer(serializers.Serializer):
+    new_password = serializers.CharField(write_only=True, min_length=8)
+    confirm_password = serializers.CharField(write_only=True)
+
+    def validate(self, data):
+        if data["new_password"] != data["confirm_password"]:
+            raise serializers.ValidationError("Passwords do not match.")
+        return data
+
+    def save(self):
+        tenant = self.context["tenant"]
+        password = self.validated_data["new_password"]
+
+        user = User.objects.filter(email__iexact=tenant.email).first()
+        if user:
+            user.set_password(password)
+            user.is_active = True
+            user.save(update_fields=["password", "is_active"])
+        else:
+            user = User.objects.create_user(
+                email=tenant.email,
+                password=password,
+                first_name=tenant.first_name,
+                last_name=tenant.last_name,
+            )
+
+        tenant.user = user
+        tenant.save(update_fields=["user"])
+        return user

@@ -185,6 +185,7 @@ class TenantSerializer(serializers.ModelSerializer):
             "alias",
             "avatar",
             "first_name",
+            "middle_name",
             "last_name",
             "email",
             "phone",
@@ -196,6 +197,7 @@ class TenantSerializer(serializers.ModelSerializer):
             "employment_details",
             "guarantor_name",
             "notes",
+            "is_active",
             "property",
         ]
         read_only_fields = [

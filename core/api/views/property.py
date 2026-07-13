@@ -109,8 +109,14 @@ class TenantDetailView(RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_object(self):
-        return get_object_or_404(Tenant, alias=self.kwargs["tenant_alias"])
-
+        organisation = self.request.user.get_organisation()
+        if not organisation:
+            raise NotFound("Organisation not found for the user.")
+        return get_object_or_404(
+            Tenant,
+            alias=self.kwargs["tenant_alias"],
+            organisation=organisation
+        )
 
 class ComplianceAndCertificationListView(ListCreateAPIView):
     serializer_class = ComplianceAndCertificationSerializers

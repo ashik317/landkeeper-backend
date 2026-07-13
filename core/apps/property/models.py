@@ -1,6 +1,7 @@
 from django.db import models
 from apps.organisation.models import Organisation
 from common.models import CreatedAtUpdatedAtBaseModel, Media, DocumentFile
+from django.conf import settings
 from .enums import (
     PropertyType,
     CertificateType,
@@ -102,6 +103,7 @@ class Tenant(CreatedAtUpdatedAtBaseModel):
         upload_to=tenant_avatar_upload_path, blank=True, null=True
     )
     first_name = models.CharField(max_length=64)
+    middle_name = models.CharField(max_length=64, blank=True, null=True)
     last_name = models.CharField(max_length=64)
     email = models.EmailField(blank=True, null=True)
     phone = models.CharField(max_length=20, blank=True, null=True)
@@ -116,6 +118,7 @@ class Tenant(CreatedAtUpdatedAtBaseModel):
     tenancy_end_date = models.DateField(blank=True, null=True)
     employment_details = models.TextField(blank=True, null=True)
     guarantor_name = models.CharField(max_length=128, blank=True, null=True)
+    is_active = models.BooleanField(default=False)
     notes = models.TextField(blank=True, null=True)
 
     # FK
@@ -124,6 +127,13 @@ class Tenant(CreatedAtUpdatedAtBaseModel):
     )
     organisation = models.ForeignKey(
         Organisation, on_delete=models.CASCADE, related_name="organisation_tenants"
+    )
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tenant_profile",
     )
 
     def __str__(self):
