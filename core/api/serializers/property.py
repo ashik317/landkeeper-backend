@@ -21,7 +21,6 @@ class MediaSerializer(serializers.ModelSerializer):
             "description",
         ]
 
-
 class DocumentFileSerializer(serializers.ModelSerializer):
     class Meta:
         model = DocumentFile
@@ -127,6 +126,10 @@ class MortgageSerializers(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        representation["property"] = PropertySlimSerializer(instance.property).data
+        return representation
 
     def _validate_mortgage_files(self, files):
         allowed_extensions = [
@@ -160,23 +163,23 @@ class MortgageSerializers(serializers.ModelSerializer):
         return mortgage
 
     def update(self, instance, validated_data):
-        uploaded_files = validated_data.pop("mortgage_documents", [])
-        self._validate_mortgage_files(uploaded_files)
+        uploaded_files = validated_data.pop("mortgage_documents", None)
+
+        if uploaded_files is not None:
+            self._validate_mortgage_files(uploaded_files)
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
 
-        for file in uploaded_files:
-            doc_file = DocumentFile.objects.create(file=file)
-            instance.mortgage_documents.add(doc_file)
+        if uploaded_files is not None:
+            instance.mortgage_documents.all().delete()
+
+            for file in uploaded_files:
+                doc_file = DocumentFile.objects.create(file=file)
+                instance.mortgage_documents.add(doc_file)
+
         return instance
-
-    def to_representation(self, instance):
-        representation = super().to_representation(instance)
-        representation["property"] = PropertySlimSerializer(instance.property).data
-        return representation
-
 
 class TenantSerializer(serializers.ModelSerializer):
     class Meta:
@@ -239,6 +242,11 @@ class ComplianceAndCertificationSerializers(serializers.ModelSerializer):
 
 class UploadDocumentSerializer(serializers.ModelSerializer):
     files = DocumentFileSerializer(many=True, read_only=True)
+    uploaded_files = serializers.ListField(
+        child=serializers.FileField(),
+        write_only=True,
+        required=False,
+    )
 
     class Meta:
         model = UploadDocument
@@ -249,6 +257,14 @@ class UploadDocumentSerializer(serializers.ModelSerializer):
             "document_name",
             "tags",
             "files",
+            "uploaded_files",
+            "created_at",
+            "updated_at"
+        ]
+        read_only_fields = [
+            "alias",
+            "created_at",
+            "updated_at"
         ]
 
     def to_representation(self, instance):
@@ -288,16 +304,22 @@ class UploadDocumentSerializer(serializers.ModelSerializer):
         return upload_document
 
     def update(self, instance, validated_data):
-        uploaded_files = validated_data.pop("uploaded_files", [])
-        self._validate_files(uploaded_files)
+        uploaded_files = validated_data.pop("uploaded_files", None)
+
+        if uploaded_files is not None:
+            self._validate_files(uploaded_files)
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
 
-        for file in uploaded_files:
-            doc_file = DocumentFile.objects.create(file=file)
-            instance.files.add(doc_file)
+        if uploaded_files is not None:
+            instance.files.all().delete()
+
+            for file in uploaded_files:
+                doc_file = DocumentFile.objects.create(file=file)
+                instance.files.add(doc_file)
+
         return instance
 
 
@@ -369,13 +391,19 @@ class FinanceSerializer(serializers.ModelSerializer):
         return finance
 
     def update(self, instance, validated_data):
-        uploaded_receipt = validated_data.pop("uploaded_receipt", [])
+        uploaded_receipt = validated_data.pop("uploaded_receipt", None)
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
 
-        for file in uploaded_receipt:
-            doc_file = DocumentFile.objects.create(file=file)
-            instance.receipt.add(doc_file)
+        if uploaded_receipt is not None:
+            # Delete old DocumentFile objects
+            instance.receipt.all().delete()
+
+            # Add new files
+            for file in uploaded_receipt:
+                doc_file = DocumentFile.objects.create(file=file)
+                instance.receipt.add(doc_file)
+
         return instance
