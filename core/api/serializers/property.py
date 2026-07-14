@@ -10,6 +10,7 @@ from apps.property.models import (
 )
 from common.models import Media, DocumentFile
 from common.serializers import PropertySlimSerializer
+from django.db import transaction
 
 
 class MediaSerializer(serializers.ModelSerializer):
@@ -407,3 +408,72 @@ class FinanceSerializer(serializers.ModelSerializer):
                 instance.receipt.add(doc_file)
 
         return instance
+
+class OnboardingSerializer(serializers.Serializer):
+    STEP_SERIALIZERS = {
+        "property": PropertySerializer,
+        "mortgage": MortgageSerializers,
+        "tenant": TenantSerializer,
+        "compliance": ComplianceAndCertificationSerializers,
+        "upload_document": UploadDocumentSerializer,
+    }
+
+    steps = serializers.ListField(child=serializers.DictField())
+
+    @transaction.atomic
+    def create(self, validated_data):
+        request = self.context["request"]
+
+        organisation_user = request.user.organisation_users.select_related(
+            "organisation"
+        ).first()
+
+        if not organisation_user:
+            raise serializers.ValidationError(
+                {"organisation": ["User is not linked to any organisation."]}
+            )
+
+        organisation = organisation_user.organisation
+        property_obj = None
+        results = []
+
+        for step in validated_data["steps"]:
+            step_name = step.get("step")
+            serializer_class = self.STEP_SERIALIZERS.get(step_name)
+
+            if serializer_class is None:
+                raise serializers.ValidationError(
+                    {"step": [f"'{step_name}' is not a valid step."]}
+                )
+
+            payload = {**step.get("data", {})}
+
+            if step_name != "property":
+                if property_obj is None:
+                    raise serializers.ValidationError(
+                        {
+                            "property": [
+                                "Property must be created first in this batch."
+                            ]
+                        }
+                    )
+                payload["property"] = property_obj.pk
+
+            serializer = serializer_class(data=payload, context=self.context)
+            serializer.is_valid(raise_exception=True)
+
+            instance = serializer.save(organisation=organisation)
+
+            if step_name == "property":
+                property_obj = instance
+
+            results.append(
+                {
+                    "step": step_name,
+                    "result": serializer_class(
+                        instance, context=self.context
+                    ).data,
+                }
+            )
+
+        return {"results": results}

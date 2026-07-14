@@ -13,6 +13,7 @@ from api.views.property import (
     UploadDocumentListCreateApiView,
     FinanceDetailView,
     FinanceListView,
+    OnboardingAPIView,
 )
 
 urlpatterns = [
@@ -60,5 +61,10 @@ urlpatterns = [
         "/finance/<uuid:finance_alias>",
         FinanceDetailView.as_view(),
         name="finance-retrieve-update",
+    ),
+    path(
+        "/properties/onboarding",
+        OnboardingAPIView.as_view(),
+        name="property-onboarding",
     ),
 ]
