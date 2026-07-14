@@ -20,7 +20,7 @@ from api.serializers.property import (
     ComplianceAndCertificationSerializers,
     UploadDocumentSerializer,
     FinanceSerializer,
-    OnboardingSerializer,
+    PropertyOnboardingSerializer,
 )
 
 
@@ -208,9 +208,9 @@ class FinanceDetailView(RetrieveUpdateDestroyAPIView):
     def get_object(self):
         return get_object_or_404(Finance, alias=self.kwargs["finance_alias"])
 
-class OnboardingAPIView(APIView):
+class PropertyOnboardingAPIView(APIView):
     def post(self, request, *args, **kwargs):
-        serializer = OnboardingSerializer(
+        serializer = PropertyOnboardingSerializer(
             data=request.data,
             context={"request": request},
         )

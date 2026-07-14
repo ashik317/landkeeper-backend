@@ -409,7 +409,7 @@ class FinanceSerializer(serializers.ModelSerializer):
 
         return instance
 
-class OnboardingSerializer(serializers.Serializer):
+class PropertyOnboardingSerializer(serializers.Serializer):
     STEP_SERIALIZERS = {
         "property": PropertySerializer,
         "mortgage": MortgageSerializers,
