@@ -295,7 +295,7 @@ def send_invite_email(invite, organisation, inviter_name):
 def send_tenant_invite_email(tenant, organisation, inviter_name):
     """Builds the tenant invite link, HTML body, and sends the invite email."""
     query = urlencode({"token": str(tenant.alias)})
-    invite_link = f"{settings.FRONTEND_URL}/auth/accept-invite?{query}"
+    invite_link = f"{settings.FRONTEND_URL}/auth/tenant-accept-invite?{query}"
 
     inviter_name = escape(inviter_name)
     organisation_name = escape(organisation.name)
