@@ -444,28 +444,6 @@ class TenantSendInviteView(APIView):
         )
         return Response({"detail": "Invitation sent."})
 
-
-class TenantResendInviteView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, tenant_alias):
-        organisation = request.user.get_organisation()
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
-
-        tenant = get_object_or_404(
-            Tenant, alias=tenant_alias, organisation=organisation
-        )
-        if not tenant.email:
-            return Response({"detail": "Tenant has no email address."}, status=400)
-
-        send_tenant_invite_email(
-            tenant=tenant,
-            organisation=organisation,
-            inviter_name=request.user.get_full_name(),
-        )
-        return Response({"detail": "Invitation resent."})
-
 class TenantAcceptInviteView(APIView):
     permission_classes = []
 
