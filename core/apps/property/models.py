@@ -1,5 +1,6 @@
 from django.db import models
 from apps.organisation.models import Organisation
+from apps.authentication.enums import NameTitleChoices
 from common.models import CreatedAtUpdatedAtBaseModel, Media, DocumentFile
 from django.conf import settings
 from .enums import (
@@ -101,6 +102,12 @@ class Mortgage(CreatedAtUpdatedAtBaseModel):
 class Tenant(CreatedAtUpdatedAtBaseModel):
     avatar = models.ImageField(
         upload_to=tenant_avatar_upload_path, blank=True, null=True
+    )
+    title = models.CharField(
+        max_length=20,
+        choices=NameTitleChoices.choices,
+        blank=True,
+        null=True,
     )
     first_name = models.CharField(max_length=64)
     middle_name = models.CharField(max_length=64, blank=True, null=True)

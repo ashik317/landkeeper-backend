@@ -22,6 +22,7 @@ class MediaSerializer(serializers.ModelSerializer):
             "description",
         ]
 
+
 class DocumentFileSerializer(serializers.ModelSerializer):
     class Meta:
         model = DocumentFile
@@ -127,6 +128,7 @@ class MortgageSerializers(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         representation["property"] = PropertySlimSerializer(instance.property).data
@@ -182,12 +184,14 @@ class MortgageSerializers(serializers.ModelSerializer):
 
         return instance
 
+
 class TenantSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tenant
         fields = [
             "alias",
             "avatar",
+            "title",
             "first_name",
             "middle_name",
             "last_name",
@@ -260,13 +264,9 @@ class UploadDocumentSerializer(serializers.ModelSerializer):
             "files",
             "uploaded_files",
             "created_at",
-            "updated_at"
+            "updated_at",
         ]
-        read_only_fields = [
-            "alias",
-            "created_at",
-            "updated_at"
-        ]
+        read_only_fields = ["alias", "created_at", "updated_at"]
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
@@ -409,6 +409,7 @@ class FinanceSerializer(serializers.ModelSerializer):
 
         return instance
 
+
 class PropertyOnboardingSerializer(serializers.Serializer):
     STEP_SERIALIZERS = {
         "property": PropertySerializer,
@@ -451,11 +452,7 @@ class PropertyOnboardingSerializer(serializers.Serializer):
             if step_name != "property":
                 if property_obj is None:
                     raise serializers.ValidationError(
-                        {
-                            "property": [
-                                "Property must be created first in this batch."
-                            ]
-                        }
+                        {"property": ["Property must be created first in this batch."]}
                     )
                 payload["property"] = property_obj.pk
 
@@ -470,9 +467,7 @@ class PropertyOnboardingSerializer(serializers.Serializer):
             results.append(
                 {
                     "step": step_name,
-                    "result": serializer_class(
-                        instance, context=self.context
-                    ).data,
+                    "result": serializer_class(instance, context=self.context).data,
                 }
             )
 
