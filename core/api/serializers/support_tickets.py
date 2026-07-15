@@ -150,9 +150,6 @@ class SupportTicketCommentSerializer(serializers.ModelSerializer):
         ]
 
     def get_replies(self, obj):
-        # No longer gated by obj.parent is None — every comment, at any
-        # depth, reports its own replies. This is what was hiding 3rd+
-        # level replies before.
         replies = obj.replies.all().order_by("created_at")
         return SupportTicketCommentSerializer(
             replies, many=True, context=self.context
@@ -176,3 +173,17 @@ class SupportTicketCommentSerializer(serializers.ModelSerializer):
             SupportTicketFile.objects.create(comment=comment, file=file)
 
         return comment
+
+    def update(self, instance, validated_data):
+        upload_files = validated_data.pop("upload_files", [])
+        instance = super().update(instance, validated_data)
+
+        if upload_files:
+            for old_file in instance.files.all():
+                old_file.file.delete(save=False)
+                old_file.delete()
+
+            for file in upload_files:
+                SupportTicketFile.objects.create(comment=instance, file=file)
+
+        return instance
