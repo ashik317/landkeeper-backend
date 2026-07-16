@@ -3,7 +3,11 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from apps.organisation.models import Organisation
-from apps.supportticket.enums import SupportTicketType
+from apps.supportticket.enums import (
+    SupportTicketType,
+    SupportTicketStatus,
+    SupportTicketPriority
+)
 from apps.supportticket.utils import support_ticket_upload_path
 from common.models import CreatedAtUpdatedAtBaseModel
 
@@ -21,6 +25,17 @@ class SupportTicket(CreatedAtUpdatedAtBaseModel):
         verbose_name=_("Subject"),
     )
     description = models.TextField(verbose_name=_("Description"))
+    status = models.CharField(
+        max_length=20,
+        choices=SupportTicketStatus.choices,
+        default=SupportTicketStatus.OPEN,
+        verbose_name=_("Status"),
+    )
+    priority = models.CharField(
+        max_length=20,
+        choices=SupportTicketPriority.choices,
+        default=SupportTicketPriority.WHEN_POSSIBLE,
+    )
     ticket_id = models.CharField(max_length=50, blank=True, unique=True)
     organisation = models.ForeignKey(
         Organisation,

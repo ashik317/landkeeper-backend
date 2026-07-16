@@ -54,6 +54,8 @@ class SupportTicketSerializer(serializers.ModelSerializer):
             "ticket_id",
             "ticket_type",
             "subject",
+            "status",
+            "priority",
             "description",
             "upload_files",
             "files",
