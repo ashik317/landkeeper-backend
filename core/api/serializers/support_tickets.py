@@ -1,3 +1,4 @@
+import re
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from apps.organisation.models import OrganisationUser
@@ -53,6 +54,8 @@ class SupportTicketSerializer(serializers.ModelSerializer):
             "ticket_id",
             "ticket_type",
             "subject",
+            "status",
+            "priority",
             "description",
             "upload_files",
             "files",
@@ -68,7 +71,9 @@ class SupportTicketSerializer(serializers.ModelSerializer):
         ]
 
     def _generate_ticket_id(self, organisation):
-        prefix = organisation.name[:3].upper()
+        # Strip anything that's not a letter, then take the first 3 letters
+        clean_name = re.sub(r"[^A-Za-z]", "", organisation.name)
+        prefix = (clean_name[:3] or "GEN").upper()
 
         last_ticket = (
             SupportTicket.objects.filter(organisation=organisation)
