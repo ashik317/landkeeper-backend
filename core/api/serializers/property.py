@@ -409,7 +409,6 @@ class FinanceSerializer(serializers.ModelSerializer):
 
         return instance
 
-
 class PropertyOnboardingSerializer(serializers.Serializer):
     STEP_ORDER = ["property", "mortgage", "tenant", "compliance", "upload_document"]
 
@@ -426,6 +425,34 @@ class PropertyOnboardingSerializer(serializers.Serializer):
     tenant = serializers.DictField(required=False)
     compliance = serializers.DictField(required=False)
     upload_document = serializers.DictField(required=False)
+
+    def to_internal_value(self, data):
+        if any(isinstance(data.get(step), dict) for step in self.STEP_ORDER if hasattr(data, "get")):
+            return super().to_internal_value(data)
+
+        nested = {}
+        keys = data.keys() if hasattr(data, "keys") else []
+
+        for key in keys:
+            for step in self.STEP_ORDER:
+                prefix = f"{step}_"
+                if key.startswith(prefix):
+                    field_name = key[len(prefix):]
+
+                    if hasattr(data, "getlist"):
+                        values = data.getlist(key)
+                        value = values if len(values) > 1 else values[0]
+                    else:
+                        value = data.get(key)
+
+                    nested.setdefault(step, {})[field_name] = value
+                    break
+
+        if nested:
+            self.initial_data = nested
+            return super().to_internal_value(nested)
+
+        return super().to_internal_value(data)
 
     def validate(self, attrs):
         if not any(key in self.initial_data for key in self.STEP_ORDER):
