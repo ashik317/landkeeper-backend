@@ -13,7 +13,7 @@ User = get_user_model()
 
 class SupportTicketUserSlimSerializer(serializers.ModelSerializer):
     name = serializers.CharField(max_length=255, source="get_full_name", read_only=True)
-    user_type = serializers.SerializerMethodField()
+    role = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -25,10 +25,10 @@ class SupportTicketUserSlimSerializer(serializers.ModelSerializer):
             "first_name",
             "last_name",
             "email",
-            "user_type",
+            "role",
         ]
 
-    def get_user_type(self, obj):
+    def get_role(self, obj):
         organisation_user = OrganisationUser.objects.filter(user=obj).only("role").first()
         return organisation_user.role if organisation_user else None
 

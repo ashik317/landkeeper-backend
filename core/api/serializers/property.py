@@ -411,6 +411,8 @@ class FinanceSerializer(serializers.ModelSerializer):
 
 
 class PropertyOnboardingSerializer(serializers.Serializer):
+    STEP_ORDER = ["property", "mortgage", "tenant", "compliance", "upload_document"]
+
     STEP_SERIALIZERS = {
         "property": PropertySerializer,
         "mortgage": MortgageSerializers,
@@ -419,7 +421,18 @@ class PropertyOnboardingSerializer(serializers.Serializer):
         "upload_document": UploadDocumentSerializer,
     }
 
-    steps = serializers.ListField(child=serializers.DictField())
+    property = serializers.DictField(required=False)
+    mortgage = serializers.DictField(required=False)
+    tenant = serializers.DictField(required=False)
+    compliance = serializers.DictField(required=False)
+    upload_document = serializers.DictField(required=False)
+
+    def validate(self, attrs):
+        if not any(key in self.initial_data for key in self.STEP_ORDER):
+            raise serializers.ValidationError(
+                {"non_field_errors": ["At least one of property/mortgage/tenant/compliance/upload_document is required."]}
+            )
+        return attrs
 
     @transaction.atomic
     def create(self, validated_data):
@@ -436,18 +449,14 @@ class PropertyOnboardingSerializer(serializers.Serializer):
 
         organisation = organisation_user.organisation
         property_obj = None
-        results = []
+        results = {}
 
-        for step in validated_data["steps"]:
-            step_name = step.get("step")
-            serializer_class = self.STEP_SERIALIZERS.get(step_name)
+        for step_name in self.STEP_ORDER:
+            if step_name not in validated_data:
+                continue
 
-            if serializer_class is None:
-                raise serializers.ValidationError(
-                    {"step": [f"'{step_name}' is not a valid step."]}
-                )
-
-            payload = {**step.get("data", {})}
+            serializer_class = self.STEP_SERIALIZERS[step_name]
+            payload = dict(validated_data[step_name])
 
             if step_name != "property":
                 if property_obj is None:
@@ -464,11 +473,6 @@ class PropertyOnboardingSerializer(serializers.Serializer):
             if step_name == "property":
                 property_obj = instance
 
-            results.append(
-                {
-                    "step": step_name,
-                    "result": serializer_class(instance, context=self.context).data,
-                }
-            )
+            results[step_name] = serializer_class(instance, context=self.context).data
 
-        return {"results": results}
+        return results
