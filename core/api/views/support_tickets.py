@@ -1,10 +1,12 @@
 from django.shortcuts import get_object_or_404
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter
 from rest_framework.generics import (
     ListCreateAPIView,
     RetrieveUpdateDestroyAPIView,
 )
 from rest_framework.permissions import IsAuthenticated
+from apps.supportticket.filters import SupportTicketFilter
 from apps.supportticket.models import SupportTicket, SupportTicketComment
 from ..serializers.support_tickets import (
     SupportTicketSerializer,
@@ -15,7 +17,8 @@ from ..serializers.support_tickets import (
 class SupportTicketListView(ListCreateAPIView):
     serializer_class = SupportTicketSerializer
     permission_classes = [IsAuthenticated]
-    filter_backends = [SearchFilter]
+    filter_backends = [DjangoFilterBackend, SearchFilter]
+    filterset_class = SupportTicketFilter
     search_fields = [
         "ticket_id",
         "created_by__email",
