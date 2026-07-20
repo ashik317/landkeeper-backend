@@ -420,6 +420,14 @@ class PropertyOnboardingSerializer(serializers.Serializer):
         "upload_document": UploadDocumentSerializer,
     }
 
+    # Fields that must always stay lists, even when only one value is submitted,
+    # because the downstream step serializer defines them as ListField(...).
+    MULTI_VALUE_FIELDS = {
+        "property": {"documents_data"},
+        "mortgage": {"mortgage_documents"},
+        "upload_document": {"uploaded_files"},
+    }
+
     property = serializers.DictField(required=False)
     mortgage = serializers.DictField(required=False)
     tenant = serializers.DictField(required=False)
@@ -441,7 +449,8 @@ class PropertyOnboardingSerializer(serializers.Serializer):
 
                     if hasattr(data, "getlist"):
                         values = data.getlist(key)
-                        value = values if len(values) > 1 else values[0]
+                        is_multi = field_name in self.MULTI_VALUE_FIELDS.get(step, set())
+                        value = values if (is_multi or len(values) > 1) else values[0]
                     else:
                         value = data.get(key)
 
