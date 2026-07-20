@@ -9,6 +9,7 @@ from dj_rest_auth.registration.views import SocialLoginView
 from dj_rest_auth.views import LoginView
 from rest_framework.exceptions import NotFound
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.exceptions import TokenError
 from api.utils import (
     send_password_reset_email,
@@ -31,6 +32,7 @@ from apps.property.models import Tenant
 from ..serializers.auth import (
     UserRegistrationSerializer,
     UserProfileSerializer,
+    TenantProfileSerializer,
     EmailVerifySerializer,
     InviteUserSerializer,
     AcceptInviteSerializer,
@@ -102,8 +104,70 @@ class ResendVerificationView(APIView):
         )
 
 
+def get_tokens_for_tenant(tenant):
+    refresh = RefreshToken()  # NOT .for_user() — avoids OutstandingToken FK crash
+
+    user_id = tenant.pk
+    if not isinstance(user_id, int):
+        user_id = str(user_id)
+    refresh[api_settings.USER_ID_CLAIM] = user_id
+
+    refresh["user_type"] = "tenant"
+    refresh["organisation_id"] = tenant.organisation_id
+    return refresh
+
+
 class CustomLoginView(LoginView):
     permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        email = (request.data.get("email") or "").lower().strip()
+        password = request.data.get("password")
+
+        if not email or not password:
+            return Response(
+                {"detail": "Email and password are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # -------------------------
+        # TENANT LOGIN
+        # -------------------------
+        tenant = Tenant.objects.filter(email=email).first()
+        if tenant is not None:
+            if not tenant.check_password(password):
+                return Response(
+                    {"detail": "Invalid credentials."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not tenant.is_active:
+                return Response(
+                    {"detail": "This tenant account is inactive."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+            refresh = get_tokens_for_tenant(tenant)
+
+            return Response(
+                {
+                    "access": str(refresh.access_token),
+                    "refresh": str(refresh),
+                    "user_type": "tenant",
+                    "tenant": {
+                        "id": tenant.id,
+                        "email": tenant.email,
+                        "full_name": tenant.get_full_name(),
+                        "organisation_id": tenant.organisation_id,
+                        "property_id": tenant.property_id,
+                    },
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        # -------------------------
+        # DEFAULT USER LOGIN
+        # -------------------------
+        return super().post(request, *args, **kwargs)
 
 
 class GoogleLoginView(SocialLoginView):
@@ -301,7 +365,11 @@ class LogoutAPIView(APIView):
 
 class UserProfileView(RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated]
-    serializer_class = UserProfileSerializer
+
+    def get_serializer_class(self):
+        if isinstance(self.request.user, Tenant):
+            return TenantProfileSerializer
+        return UserProfileSerializer
 
     def get_object(self):
         return self.request.user
@@ -354,6 +422,7 @@ class SendInviteView(APIView):
             InviteUserSerializer(invite).data, status=status.HTTP_201_CREATED
         )
 
+
 class ResendInviteView(APIView):
     permission_classes = [IsAuthenticated, IsLandlord]
 
@@ -365,9 +434,7 @@ class ResendInviteView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        invite = get_object_or_404(
-            InviteUser, alias=alias, organisation=organisation
-        )
+        invite = get_object_or_404(InviteUser, alias=alias, organisation=organisation)
 
         send_invite_email(
             invite=invite,
@@ -380,6 +447,7 @@ class ResendInviteView(APIView):
             status=status.HTTP_200_OK,
         )
 
+
 class DeleteInviteView(APIView):
     permission_classes = [IsAuthenticated, IsLandlord]
 
@@ -391,14 +459,13 @@ class DeleteInviteView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        invite = get_object_or_404(
-            InviteUser, alias=alias, organisation=organisation
-        )
+        invite = get_object_or_404(InviteUser, alias=alias, organisation=organisation)
         invite.delete()
         return Response(
             {"detail": "Invite deleted successfully."},
             status=status.HTTP_200_OK,
         )
+
 
 class AcceptInviteView(APIView):
     permission_classes = []
@@ -423,6 +490,7 @@ class AcceptInviteView(APIView):
             status=status.HTTP_201_CREATED,
         )
 
+
 class TenantSendInviteView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -444,19 +512,22 @@ class TenantSendInviteView(APIView):
         )
         return Response({"detail": "Invitation sent."})
 
+
 class TenantAcceptInviteView(APIView):
     permission_classes = []
 
     def post(self, request, tenant_alias):
         tenant = get_object_or_404(Tenant, alias=tenant_alias)
 
-        if tenant.user_id:
+        if tenant.has_usable_password():
             return Response(
-                {"detail": "Invite already accepted."}, status=status.HTTP_400_BAD_REQUEST
+                {"detail": "Invite already accepted."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
         if not tenant.email:
             return Response(
-                {"detail": "Tenant has no email on file."}, status=status.HTTP_400_BAD_REQUEST
+                {"detail": "Tenant has no email on file."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         serializer = TenantAcceptInviteSerializer(

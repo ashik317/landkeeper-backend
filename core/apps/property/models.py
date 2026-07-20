@@ -1,3 +1,4 @@
+from django.contrib.auth.models import AbstractBaseUser
 from django.db import models
 from apps.organisation.models import Organisation
 from apps.authentication.enums import NameTitleChoices
@@ -12,6 +13,7 @@ from .enums import (
     TransactionType,
     Category,
 )
+from .managers import ApplicantManager
 from .utils import certificate_file_upload_path, tenant_avatar_upload_path
 
 
@@ -99,7 +101,7 @@ class Mortgage(CreatedAtUpdatedAtBaseModel):
         return f"{self.lender_name}"
 
 
-class Tenant(CreatedAtUpdatedAtBaseModel):
+class Tenant(AbstractBaseUser, CreatedAtUpdatedAtBaseModel):
     avatar = models.ImageField(
         upload_to=tenant_avatar_upload_path, blank=True, null=True
     )
@@ -127,6 +129,8 @@ class Tenant(CreatedAtUpdatedAtBaseModel):
     guarantor_name = models.CharField(max_length=128, blank=True, null=True)
     is_active = models.BooleanField(default=False)
     notes = models.TextField(blank=True, null=True)
+    is_staff = False
+    is_superuser = False
 
     # FK
     property = models.ForeignKey(
@@ -135,13 +139,31 @@ class Tenant(CreatedAtUpdatedAtBaseModel):
     organisation = models.ForeignKey(
         Organisation, on_delete=models.CASCADE, related_name="organisation_tenants"
     )
-    user = models.OneToOneField(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="tenant_profile",
-    )
+
+    USERNAME_FIELD = "email"
+
+    objects = ApplicantManager()
+
+    # class Meta:
+    #     # constraints = [
+    #     #     models.UniqueConstraint(
+    #     #         fields=["organisation", "email"],
+    #     #         name="unique_tenant_email_per_org",
+    #     #     )
+    #     # ]
+    #     indexes = [
+    #         models.Index(fields=["organisation", "email"]),
+    #     ]
+
+    def save(self, *args, **kwargs):
+        if self.email:
+            self.email = self.email.lower().strip()
+        super().save(*args, **kwargs)
+
+    def get_full_name(self):
+        parts = [self.title, self.first_name, self.middle_name, self.last_name]
+        full_name = " ".join(filter(None, parts))
+        return full_name.strip().title()
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"

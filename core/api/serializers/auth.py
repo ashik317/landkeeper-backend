@@ -6,6 +6,7 @@ from apps.authentication.models import EmailVerification, InviteUser
 from apps.authentication.enums import NameTitleChoices
 from apps.organisation.models import Organisation, OrganisationUser
 from apps.subscription.models import UserSubscription, SubscriptionPlan
+from apps.property.models import Tenant
 from api.utils import send_verification_email
 
 User = get_user_model()
@@ -184,12 +185,42 @@ class UserProfileSerializer(serializers.ModelSerializer):
     def get_role(self, obj):
         if obj.is_superuser:
             return "SUPER_ADMIN"
+
         else:
             return (
                 obj.organisation_users.first().role
                 if obj.organisation_users.exists()
                 else None
             )
+
+    def get_is_password_available(self, obj):
+        return obj.has_usable_password()
+
+
+class TenantProfileSerializer(serializers.ModelSerializer):
+    role = serializers.SerializerMethodField()
+    is_password_available = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Tenant
+        fields = [
+            "email",
+            "title",
+            "first_name",
+            "middle_name",
+            "last_name",
+            "role",
+            "phone",
+            "avatar",
+            "is_active",
+            "is_password_available",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["email", "role", "is_active", "created_at", "updated_at"]
+
+    def get_role(self, obj):
+        return "TENANT"
 
     def get_is_password_available(self, obj):
         return obj.has_usable_password()
@@ -268,6 +299,7 @@ class AcceptInviteSerializer(serializers.Serializer):
 
         return user
 
+
 class TenantAcceptInviteSerializer(serializers.Serializer):
     new_password = serializers.CharField(write_only=True, min_length=8)
     confirm_password = serializers.CharField(write_only=True)
@@ -281,19 +313,8 @@ class TenantAcceptInviteSerializer(serializers.Serializer):
         tenant = self.context["tenant"]
         password = self.validated_data["new_password"]
 
-        user = User.objects.filter(email__iexact=tenant.email).first()
-        if user:
-            user.set_password(password)
-            user.is_active = True
-            user.save(update_fields=["password", "is_active"])
-        else:
-            user = User.objects.create_user(
-                email=tenant.email,
-                password=password,
-                first_name=tenant.first_name,
-                last_name=tenant.last_name,
-            )
+        tenant.set_password(password)
+        tenant.is_active = True
+        tenant.save(update_fields=["password", "is_active"])
 
-        tenant.user = user
-        tenant.save(update_fields=["user"])
-        return user
+        return tenant

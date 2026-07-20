@@ -1,3 +1,4 @@
+from django.contrib.auth.hashers import make_password
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.exceptions import NotFound
@@ -103,7 +104,7 @@ class TenantListView(ListCreateAPIView):
         organisation = self.request.user.get_organisation()
         if not organisation:
             raise NotFound("Organisation not found for the user.")
-        serializer.save(organisation=organisation)
+        serializer.save(organisation=organisation, password=make_password(None))
 
 
 class TenantDetailView(RetrieveUpdateDestroyAPIView):
@@ -115,10 +116,9 @@ class TenantDetailView(RetrieveUpdateDestroyAPIView):
         if not organisation:
             raise NotFound("Organisation not found for the user.")
         return get_object_or_404(
-            Tenant,
-            alias=self.kwargs["tenant_alias"],
-            organisation=organisation
+            Tenant, alias=self.kwargs["tenant_alias"], organisation=organisation
         )
+
 
 class ComplianceAndCertificationListView(ListCreateAPIView):
     serializer_class = ComplianceAndCertificationSerializers
@@ -207,6 +207,7 @@ class FinanceDetailView(RetrieveUpdateDestroyAPIView):
 
     def get_object(self):
         return get_object_or_404(Finance, alias=self.kwargs["finance_alias"])
+
 
 class PropertyOnboardingAPIView(APIView):
     def post(self, request, *args, **kwargs):

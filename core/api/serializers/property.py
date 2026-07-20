@@ -1,4 +1,6 @@
 import os
+from django.contrib.auth.hashers import make_password
+
 from rest_framework import serializers
 from apps.property.models import (
     Property,
@@ -217,6 +219,10 @@ class TenantSerializer(serializers.ModelSerializer):
         representation["property"] = PropertySlimSerializer(instance.property).data
         return representation
 
+    def create(self, validated_data):
+        validated_data["password"] = make_password(None)
+        return super().create(validated_data)
+
 
 class ComplianceAndCertificationSerializers(serializers.ModelSerializer):
     class Meta:
@@ -409,6 +415,7 @@ class FinanceSerializer(serializers.ModelSerializer):
 
         return instance
 
+
 class PropertyOnboardingSerializer(serializers.Serializer):
     STEP_ORDER = ["property", "mortgage", "tenant", "compliance", "upload_document"]
 
@@ -435,7 +442,11 @@ class PropertyOnboardingSerializer(serializers.Serializer):
     upload_document = serializers.DictField(required=False)
 
     def to_internal_value(self, data):
-        if any(isinstance(data.get(step), dict) for step in self.STEP_ORDER if hasattr(data, "get")):
+        if any(
+            isinstance(data.get(step), dict)
+            for step in self.STEP_ORDER
+            if hasattr(data, "get")
+        ):
             return super().to_internal_value(data)
 
         nested = {}
@@ -445,11 +456,13 @@ class PropertyOnboardingSerializer(serializers.Serializer):
             for step in self.STEP_ORDER:
                 prefix = f"{step}_"
                 if key.startswith(prefix):
-                    field_name = key[len(prefix):]
+                    field_name = key[len(prefix) :]
 
                     if hasattr(data, "getlist"):
                         values = data.getlist(key)
-                        is_multi = field_name in self.MULTI_VALUE_FIELDS.get(step, set())
+                        is_multi = field_name in self.MULTI_VALUE_FIELDS.get(
+                            step, set()
+                        )
                         value = values if (is_multi or len(values) > 1) else values[0]
                     else:
                         value = data.get(key)
@@ -466,7 +479,11 @@ class PropertyOnboardingSerializer(serializers.Serializer):
     def validate(self, attrs):
         if not any(key in self.initial_data for key in self.STEP_ORDER):
             raise serializers.ValidationError(
-                {"non_field_errors": ["At least one of property/mortgage/tenant/compliance/upload_document is required."]}
+                {
+                    "non_field_errors": [
+                        "At least one of property/mortgage/tenant/compliance/upload_document is required."
+                    ]
+                }
             )
         return attrs
 
