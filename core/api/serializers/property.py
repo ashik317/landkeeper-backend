@@ -467,6 +467,9 @@ class PropertyOnboardingSerializer(serializers.Serializer):
                     else:
                         value = data.get(key)
 
+                    if isinstance(value, str) and value.strip() == "":
+                        value = None
+
                     nested.setdefault(step, {})[field_name] = value
                     break
 

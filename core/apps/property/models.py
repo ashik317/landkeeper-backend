@@ -144,16 +144,16 @@ class Tenant(AbstractBaseUser, CreatedAtUpdatedAtBaseModel):
 
     objects = ApplicantManager()
 
-    # class Meta:
-    #     # constraints = [
-    #     #     models.UniqueConstraint(
-    #     #         fields=["organisation", "email"],
-    #     #         name="unique_tenant_email_per_org",
-    #     #     )
-    #     # ]
-    #     indexes = [
-    #         models.Index(fields=["organisation", "email"]),
-    #     ]
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organisation", "email"],
+                name="unique_tenant_email_per_org",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["organisation", "email"]),
+        ]
 
     def save(self, *args, **kwargs):
         if self.email:

@@ -241,6 +241,9 @@ FRONTEND_URL = config("FRONTEND_URL")
 # CORS Configuration
 CORS_ALLOW_CREDENTIALS = True
 
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
+
 CSRF_TRUSTED_ORIGINS = [
     "https://api.landkeeper.co.uk",
     "https://crm.landkeeper.co.uk",
