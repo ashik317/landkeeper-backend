@@ -61,7 +61,7 @@ class PaymentMethodDetailView(RetrieveUpdateDestroyAPIView):
 
 class RentPaymentListCreateView(ListCreateAPIView):
     serializer_class = RentPaymentSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsTenant]
 
     def get_queryset(self):
         return RentPayment.objects.filter(tenant=self.request.user)
@@ -76,7 +76,7 @@ class RentPaymentListCreateView(ListCreateAPIView):
 
 class RentPaymentDetailView(RetrieveAPIView):
     serializer_class = RentPaymentSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsTenant]
     lookup_field = "alias"
 
     def get_queryset(self):
@@ -84,7 +84,7 @@ class RentPaymentDetailView(RetrieveAPIView):
 
 
 class CardPaymentView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsTenant]
 
     def post(self, request):
         serializer = CardPaymentRequestSerializer(data=request.data)
@@ -100,7 +100,7 @@ class CardPaymentView(APIView):
         )
 
 class DirectDebitSetupView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsTenant]
 
     def post(self, request):
         serializer = DirectDebitSetupRequestSerializer(data=request.data)
@@ -126,7 +126,7 @@ class DirectDebitSetupView(APIView):
 
 
 class DirectDebitCompleteView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsTenant]
 
     def post(self, request):
         serializer = DirectDebitCompleteRequestSerializer(data=request.data)
@@ -137,6 +137,11 @@ class DirectDebitCompleteView(APIView):
             serializer.validated_data["redirect_flow_id"],
             serializer.validated_data["session_token"],
         )
+
+        PaymentMethod.objects.filter(tenant=tenant, is_default=True).update(
+            is_default=False
+        )
+
         payment_method = PaymentMethod.objects.create(
             tenant=tenant,
             provider="GOCARDLESS",
@@ -162,7 +167,7 @@ class DirectDebitCallbackView(APIView):
         })
 
 class RentBalanceSummaryView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsTenant]
 
     def get(self, request):
         tenant = request.user
@@ -177,7 +182,7 @@ class RentStatementView(APIView):
     api/rent-statements/?period=weekly&year=2026&week=29
     api/rent-statements/?period=custom&start_date=2026-01-01&end_date=2026-03-31
     """
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsTenant]
 
     def get(self, request):
         period = request.query_params.get("period", "yearly")
