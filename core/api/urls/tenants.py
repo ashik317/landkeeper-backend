@@ -1,0 +1,66 @@
+from django.urls import path
+
+from api.views.tenants import (
+    PaymentMethodListCreateView,
+    PaymentMethodDetailView,
+    RentPaymentListCreateView,
+    RentPaymentDetailView,
+    RentBalanceSummaryView,
+    RentStatementView,
+    DirectDebitSetupView,
+    DirectDebitCompleteView,
+    CardPaymentView,
+    DirectDebitCallbackView
+)
+
+urlpatterns = [
+    path(
+        "/payment-methods",
+        PaymentMethodListCreateView.as_view(),
+        name="payment-method-list",
+    ),
+    path(
+        "/payment-methods/<uuid:alias>",
+        PaymentMethodDetailView.as_view(),
+        name="payment-method-detail",
+    ),
+    path(
+        "/rent-payments",
+        RentPaymentListCreateView.as_view(),
+        name="rent-payment-list",
+    ),
+    path(
+        "/rent-payments/<uuid:alias>",
+        RentPaymentDetailView.as_view(),
+        name="rent-payment-detail",
+    ),
+    path(
+        "/rent-payments/balance-summary",
+        RentBalanceSummaryView.as_view(),
+        name="rent-balance-summary",
+    ),
+    path(
+        "/rent-payments/rent-statement-pdf",
+        RentStatementView.as_view(),
+        name="statement-full-year"
+    ),
+    path(
+        "/payment-methods/direct-debit/setup",
+        DirectDebitSetupView.as_view(),
+        name="direct-debit-setup"
+    ),
+    path(
+        "/payment-methods/direct-debit/complete",
+        DirectDebitCompleteView.as_view(),
+        name="direct-debit-complete"
+    ),
+    path(
+    "/payment-methods/direct-debit/callback",
+        DirectDebitCallbackView.as_view(),
+        name="direct-debit-callback",
+    ),
+    path("/rent-payments/pay-with-card",
+         CardPaymentView.as_view(),
+         name="pay-with-card"
+         ),
+]

@@ -58,6 +58,7 @@ PROJECT_APPS = [
     "apps.property.apps.PropertyConfig",
     "apps.subscription.apps.SubscriptionConfig",
     "apps.supportticket.apps.SupportticketConfig",
+    "apps.tenant.apps.TenantConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PROJECT_APPS
@@ -251,3 +252,7 @@ CORS_ALLOWED_ORIGINS = [
     "https://api.landkeeper.co.uk",
     "https://crm.landkeeper.co.uk",
 ]
+
+GOCARDLESS_ACCESS_TOKEN = config("GOCARDLESS_ACCESS_TOKEN", default="")
+GOCARDLESS_ENVIRONMENT = config("GOCARDLESS_ENVIRONMENT", default="sandbox")
+STRIPE_SECRET_KEY = config("STRIPE_SECRET_KEY", default="")
