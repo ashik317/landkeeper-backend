@@ -70,25 +70,21 @@ class SupportTicketSerializer(serializers.ModelSerializer):
             "created_by",
         ]
 
-    def _generate_ticket_id(self, organisation):
-        # Strip anything that's not a letter, then take the first 3 letters
-        clean_name = re.sub(r"[^A-Za-z]", "", organisation.name)
-        prefix = (clean_name[:3] or "GEN").upper()
-
+    def _generate_ticket_id(self):
         last_ticket = (
-            SupportTicket.objects.filter(organisation=organisation)
-            .exclude(ticket_id="")
-            .order_by("-ticket_id")
+            SupportTicket.objects.exclude(ticket_id="")
+            .order_by("-id")
             .first()
         )
 
-        if last_ticket:
-            last_number = int(last_ticket.ticket_id.split("-")[1])
-            next_number = last_number + 1
+        if last_ticket and last_ticket.ticket_id:
+            match = re.search(r"(\d+)$", last_ticket.ticket_id)
+            last_number = int(match.group(1)) if match else 0
         else:
-            next_number = 1
+            last_number = 0
 
-        return f"{prefix}-{next_number:08d}"
+        new_number = last_number + 1
+        return f"#{new_number:08d}"
 
     def create(self, validated_data):
         upload_files = validated_data.pop("upload_files", [])
@@ -99,7 +95,7 @@ class SupportTicketSerializer(serializers.ModelSerializer):
                 {"organisation": "A support ticket must be linked to an organisation."}
             )
 
-        validated_data["ticket_id"] = self._generate_ticket_id(organisation)
+        validated_data["ticket_id"] = self._generate_ticket_id()
 
         ticket = SupportTicket.objects.create(**validated_data)
 
