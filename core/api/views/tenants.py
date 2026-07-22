@@ -1,7 +1,15 @@
+import hashlib
+import hmac
+import json
+import stripe
+from django.utils import timezone
+from django.conf import settings
+from django.db import IntegrityError
 import uuid
-from datetime import date
 from io import BytesIO
 from django.http import FileResponse
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -20,12 +28,14 @@ from rest_framework.generics import (
     ListAPIView,
     RetrieveAPIView
 )
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
+from apps.tenant.enums import RentPaymentStatusChoices
 from apps.tenant.gocardless_client import create_redirect_flow, complete_redirect_flow
-from apps.tenant.models import PaymentMethod, RentPayment
+from apps.tenant.models import PaymentMethod, RentPayment, ProcessedWebhookEvent
 from api.serializers.tenants import (
     PaymentMethodSerializer,
     RentPaymentSerializer,
@@ -238,3 +248,162 @@ class RentStatementView(APIView):
         doc.build(elements)
         buffer.seek(0)
         return buffer
+
+
+class WebhookRateThrottle(SimpleRateThrottle):
+    scope = "webhook"
+
+    def get_cache_key(self, request, view):
+        ident = self.get_ident(request)
+        return self.cache_format % {"scope": self.scope, "ident": ident}
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class StripeWebhookView(APIView):
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [WebhookRateThrottle]
+
+    def post(self, request):
+        payload = request.body
+        sig_header = request.META.get("HTTP_STRIPE_SIGNATURE")
+
+        try:
+            event = stripe.Webhook.construct_event(
+                payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
+            )
+        except (ValueError, stripe.error.SignatureVerificationError):
+            return Response(
+                {"error": "Invalid payload or signature"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not self._claim_event(event["id"]):
+            return Response({"received": True, "duplicate": True}, status=status.HTTP_200_OK)
+
+        try:
+            event_type = event["type"]
+            data_object = event["data"]["object"]
+        except (KeyError, TypeError):
+            return Response(
+                {"error": "Malformed event payload"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if event_type == "payment_intent.succeeded":
+            self._mark_payment(data_object["id"], RentPaymentStatusChoices.CLEARED)
+
+        elif event_type == "payment_intent.payment_failed":
+            self._mark_payment(
+                data_object["id"],
+                RentPaymentStatusChoices.FAILED,
+                failure_reason=data_object.get("last_payment_error", {}).get(
+                    "message", "Payment failed"
+                ),
+            )
+
+        return Response({"received": True}, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _claim_event(event_id):
+        try:
+            ProcessedWebhookEvent.objects.create(provider="stripe", event_id=event_id)
+            return True
+        except IntegrityError:
+            return False
+
+    @staticmethod
+    def _mark_payment(provider_payment_id, new_status, failure_reason=None):
+        update_fields = {"status": new_status}
+        if new_status == RentPaymentStatusChoices.CLEARED:
+            update_fields["paid_date"] = timezone.localdate()
+        if failure_reason:
+            update_fields["failure_reason"] = failure_reason
+
+        RentPayment.objects.filter(
+            provider_payment_id=provider_payment_id
+        ).update(**update_fields)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class GoCardlessWebhookView(APIView):
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [WebhookRateThrottle]
+
+    def post(self, request):
+        raw_body = request.body
+        signature = request.META.get("HTTP_WEBHOOK_SIGNATURE", "")
+
+        if not self._is_valid_signature(raw_body, signature):
+            return Response(
+                {"error": "Invalid signature"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            payload = json.loads(raw_body)
+        except json.JSONDecodeError:
+            return Response(
+                {"error": "Malformed JSON payload"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        events = payload.get("events", [])
+
+        incoming_ids = [e.get("id") for e in events if e.get("id")]
+        already_seen = set(
+            ProcessedWebhookEvent.objects.filter(
+                provider="gocardless", event_id__in=incoming_ids
+            ).values_list("event_id", flat=True)
+        )
+        new_ids = [eid for eid in incoming_ids if eid not in already_seen]
+        if new_ids:
+            ProcessedWebhookEvent.objects.bulk_create(
+                [
+                    ProcessedWebhookEvent(provider="gocardless", event_id=eid)
+                    for eid in new_ids
+                ],
+                ignore_conflicts=True,
+            )
+
+        for event in events:
+            event_id = event.get("id")
+            if not event_id or event_id in already_seen:
+                continue
+
+            resource_type = event.get("resource_type")
+            action = event.get("action")
+            links = event.get("links", {})
+
+            if resource_type == "payments":
+                provider_payment_id = links.get("payment")
+
+                if action == "confirmed":
+                    self._mark_payment(
+                        provider_payment_id, RentPaymentStatusChoices.CLEARED
+                    )
+                elif action == "failed":
+                    self._mark_payment(
+                        provider_payment_id,
+                        RentPaymentStatusChoices.FAILED,
+                        failure_reason="Direct debit payment failed",
+                    )
+
+        return Response({"received": True}, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _is_valid_signature(raw_body, signature):
+        secret = settings.GOCARDLESS_WEBHOOK_SECRET.encode()
+        computed = hmac.new(secret, raw_body, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(computed, signature)
+
+    @staticmethod
+    def _mark_payment(provider_payment_id, new_status, failure_reason=None):
+        if not provider_payment_id:
+            return
+
+        update_fields = {"status": new_status}
+        if new_status == RentPaymentStatusChoices.CLEARED:
+            update_fields["paid_date"] = timezone.localdate()
+        if failure_reason:
+            update_fields["failure_reason"] = failure_reason
+
+        RentPayment.objects.filter(
+            provider_payment_id=provider_payment_id
+        ).update(**update_fields)
