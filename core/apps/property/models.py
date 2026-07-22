@@ -64,27 +64,26 @@ class Property(CreatedAtUpdatedAtBaseModel):
 
 class Mortgage(CreatedAtUpdatedAtBaseModel):
     lender_name = models.CharField(max_length=255)
-    product_type = models.CharField(
+    interest_rate_type = models.CharField(
         max_length=50,
         choices=ProductType.choices,
-        default=ProductType.FIXED_RATE,
+        null=True,
+        blank=True
     )
     interest_rate = models.DecimalField(
         max_digits=5, decimal_places=2, blank=True, null=True
     )
-    loan_amount = models.DecimalField(
-        max_digits=12, decimal_places=2, blank=True, null=True
-    )
+    interest_rate_expiry_date = models.DateField(blank=True, null=True)
     outstanding_balance = models.DecimalField(
         max_digits=10, decimal_places=2, blank=True, null=True
     )
     monthly_payment = models.DecimalField(
         max_digits=10, decimal_places=2, blank=True, null=True
     )
-    term = models.PositiveIntegerField(blank=True, null=True)
-    start_date = models.DateField(blank=True, null=True)
-    end_date = models.DateField(blank=True, null=True)
-    broker_notes = models.TextField(blank=True, null=True)
+    remaining_mortgage = models.PositiveIntegerField(blank=True, null=True)
+    notes = models.TextField(blank=True, null=True)
+    epc_rating = models.CharField( max_length=10, blank=True, null=True)
+    epc_certificate_expiry_date = models.DateField(blank=True, null=True)
     mortgage_documents = models.ManyToManyField(
         DocumentFile, blank=True, related_name="mortgages"
     )
