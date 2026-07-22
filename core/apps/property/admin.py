@@ -27,8 +27,6 @@ class MortgageAdmin(admin.ModelAdmin):
         "lender_name",
         "property",
         "organisation",
-        "product_type",
-        "loan_amount",
         "outstanding_balance",
         "created_at",
     )
