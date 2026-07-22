@@ -135,6 +135,9 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    "DEFAULT_THROTTLE_RATES": {
+        "webhook": "300/min",
+    },
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_FILTER_BACKENDS": [
         "django_filters.rest_framework.DjangoFilterBackend",
@@ -258,4 +261,7 @@ CORS_ALLOWED_ORIGINS = [
 
 GOCARDLESS_ACCESS_TOKEN = config("GOCARDLESS_ACCESS_TOKEN", default="")
 GOCARDLESS_ENVIRONMENT = config("GOCARDLESS_ENVIRONMENT", default="sandbox")
+GOCARDLESS_WEBHOOK_SECRET = config("GOCARDLESS_WEBHOOK_SECRET", default="")
+
 STRIPE_SECRET_KEY = config("STRIPE_SECRET_KEY", default="")
+STRIPE_WEBHOOK_SECRET = config("STRIPE_WEBHOOK_SECRET", default="")

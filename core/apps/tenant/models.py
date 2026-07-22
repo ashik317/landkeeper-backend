@@ -90,3 +90,19 @@ class RentPayment(CreatedAtUpdatedAtBaseModel):
 
     def __str__(self):
         return f"{self.reference} - {self.tenant} - £{self.amount}"
+
+
+class ProcessedWebhookEvent(models.Model):
+    provider = models.CharField(max_length=20)
+    event_id = models.CharField(max_length=128)
+    received_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provider", "event_id"], name="unique_provider_event"
+            )
+        ]
+        indexes = [
+            models.Index(fields=["provider", "event_id"]),
+        ]

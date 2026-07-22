@@ -10,7 +10,9 @@ from api.views.tenants import (
     DirectDebitSetupView,
     DirectDebitCompleteView,
     CardPaymentView,
-    DirectDebitCallbackView
+    DirectDebitCallbackView,
+    StripeWebhookView,
+    GoCardlessWebhookView
 )
 
 urlpatterns = [
@@ -63,4 +65,14 @@ urlpatterns = [
          CardPaymentView.as_view(),
          name="pay-with-card"
          ),
+    path(
+        "/stripe",
+        StripeWebhookView.as_view(),
+        name="webhook-stripe"
+    ),
+    path(
+        "/gocardless",
+        GoCardlessWebhookView.as_view(),
+        name="webhook-gocardless"
+    ),
 ]
