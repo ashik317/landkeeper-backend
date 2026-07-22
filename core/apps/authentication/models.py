@@ -52,6 +52,21 @@ class User(AbstractBaseUser, PermissionsMixin, CreatedAtUpdatedAtBaseModel):
     first_name = models.CharField(max_length=64)
     middle_name = models.CharField(max_length=64, blank=True)
     last_name = models.CharField(max_length=64)
+    current_address = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True
+    )
+    ni_number = models.CharField(
+        max_length=9,
+        blank=True,
+        null=True
+    )
+    utr_number = models.CharField(
+        max_length=10,
+        blank=True,
+        null=True
+    )
     profile_image = models.ImageField(
         upload_to=profile_image_upload_path, blank=True, null=True
     )
