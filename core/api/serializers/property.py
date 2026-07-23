@@ -1,4 +1,6 @@
 import os
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import IntegrityError
 from django.contrib.auth.hashers import make_password
 import re
 from rest_framework import serializers
@@ -127,12 +129,16 @@ class PropertySerializer(serializers.ModelSerializer):
 
         return attrs
 
+    MULTI_VALUE_FIELDS = {"documents_data"}
     def to_internal_value(self, data):
         if hasattr(data, "getlist"):
             plain_data = {}
             for key in data.keys():
                 values = data.getlist(key)
-                plain_data[key] = values if len(values) > 1 else values[0]
+                if key in self.MULTI_VALUE_FIELDS:
+                    plain_data[key] = values
+                else:
+                    plain_data[key] = values if len(values) > 1 else values[0]
         else:
             plain_data = dict(data)
 
@@ -166,6 +172,7 @@ class PropertySerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         documents_data = validated_data.pop("documents_data", [])
+        print("PropertySerializer.create documents_data:", documents_data)
         shareholder = validated_data.pop("shareholder", [])
 
         property_obj = Property.objects.create(**validated_data)
@@ -630,6 +637,7 @@ class PropertyOnboardingSerializer(serializers.Serializer):
 
             serializer_class = self.STEP_SERIALIZERS[step_name]
             payload = dict(validated_data[step_name])
+            print(f"[{step_name}] documents_data present:", "documents_data" in payload, payload.get("documents_data"))
 
             if step_name != "property":
                 if property_obj is None:
@@ -641,7 +649,20 @@ class PropertyOnboardingSerializer(serializers.Serializer):
             serializer = serializer_class(data=payload, context=self.context)
             serializer.is_valid(raise_exception=True)
 
-            instance = serializer.save(organisation=organisation)
+            try:
+                instance = serializer.save(organisation=organisation)
+            except DjangoValidationError as e:
+                if hasattr(e, "message_dict"):
+                    messages = []
+                    for field_messages in e.message_dict.values():
+                        messages.extend(field_messages)
+                else:
+                    messages = e.messages
+                raise serializers.ValidationError({step_name: messages})
+            except IntegrityError:
+                raise serializers.ValidationError(
+                    {step_name: ["A record with these details already exists."]}
+                )
 
             if step_name == "property":
                 property_obj = instance
