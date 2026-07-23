@@ -24,8 +24,7 @@ class Property(CreatedAtUpdatedAtBaseModel):
     property_owner = models.CharField(
         max_length=64,
         choices=PropertyOwnerType.choices,
-        null=True,
-        blank=True
+        default=PropertyOwnerType.OWNER
     )
     property_type = models.CharField(
         max_length=20,
@@ -97,14 +96,18 @@ class PropertyOwnership(CreatedAtUpdatedAtBaseModel):
     property = models.ForeignKey(
         Property,
         on_delete=models.CASCADE,
-        related_name="ownerships",
+        related_name="shareholder",
     )
     owner_name = models.CharField(
         max_length=255,
+        null=True,
+        blank=True,
     )
     share_percentage = models.DecimalField(
         max_digits=5,
         decimal_places=2,
+        null=True,
+        blank=True,
     )
     class Meta:
         ordering = ["id"]

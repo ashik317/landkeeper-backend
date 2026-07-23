@@ -14,7 +14,7 @@ class PropertyType(models.TextChoices):
 
 
 class PropertyOwnerType(models.TextChoices):
-    OWN = "OWN", _("Own")
+    OWNER = "OWNER", _("Owner")
     COMPANY = "COMPANY", _("Company")
 
 class StatusType(models.TextChoices):
