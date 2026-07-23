@@ -1,6 +1,6 @@
 import os
 from django.contrib.auth.hashers import make_password
-
+import re
 from rest_framework import serializers
 from apps.property.models import (
     Property,
@@ -508,7 +508,25 @@ class PropertyOnboardingSerializer(serializers.Serializer):
                     if isinstance(value, str) and value.strip() == "":
                         value = None
 
-                    nested.setdefault(step, {})[field_name] = value
+                    ownership_match = re.match(
+                        r"ownerships\[(\d+)\]\.(\w+)$",
+                        field_name,
+                    )
+
+                    if ownership_match:
+                        index = int(ownership_match.group(1))
+                        owner_field = ownership_match.group(2)
+
+                        property_data = nested.setdefault(step, {})
+                        ownerships = property_data.setdefault("ownerships", [])
+
+                        while len(ownerships) <= index:
+                            ownerships.append({})
+
+                        ownerships[index][owner_field] = value
+                    else:
+                        nested.setdefault(step, {})[field_name] = value
+
                     break
 
         if nested:
