@@ -36,21 +36,27 @@ class DocumentFileSerializer(serializers.ModelSerializer):
 class PropertyOwnershipSerializer(serializers.ModelSerializer):
     class Meta:
         model = PropertyOwnership
-        fields = (
+        fields = [
+            "shareholder_name",
             "owner_name",
             "share_percentage",
-        )
+        ]
         extra_kwargs = {
             "owner_name": {"required": False, "allow_null": True, "allow_blank": True},
+            "shareholder_name": {"required": False, "allow_null": True, "allow_blank": True},
             "share_percentage": {"required": False, "allow_null": True},
         }
 
     def to_representation(self, instance):
-        rep = super().to_representation(instance)
-        if instance.share_percentage is None:
-            rep.pop("share_percentage", None)
-        if not instance.owner_name:
-            rep.pop("owner_name", None)
+        rep = {}
+        property_owner = getattr(instance.property, "property_owner", None)
+
+        if property_owner == PropertyOwnerType.COMPANY:
+            rep["shareholder_name"] = instance.shareholder_name
+            rep["share_percentage"] = instance.share_percentage
+        else:
+            rep["owner_name"] = instance.owner_name
+
         return rep
 
 class PropertySerializer(serializers.ModelSerializer):
@@ -113,9 +119,11 @@ class PropertySerializer(serializers.ModelSerializer):
                         raise serializers.ValidationError(
                             {"shareholder": ["share_percentage is required when property_owner is COMPANY."]}
                         )
+                    owner["owner_name"] = None
             elif property_owner == PropertyOwnerType.OWNER:
                 for owner in shareholder:
                     owner["share_percentage"] = None
+                    owner["shareholder_name"] = None
 
         return attrs
 
@@ -132,13 +140,19 @@ class PropertySerializer(serializers.ModelSerializer):
         index = 0
         while True:
             owner_name_key = f"shareholder[{index}].owner_name"
+            shareholder_name_key = f"shareholder[{index}].shareholder_name"
             share_percentage_key = f"shareholder[{index}].share_percentage"
 
-            if owner_name_key not in plain_data and share_percentage_key not in plain_data:
+            if (
+                    owner_name_key not in plain_data
+                    and shareholder_name_key not in plain_data
+                    and share_percentage_key not in plain_data
+            ):
                 break
 
             shareholder.append({
                 "owner_name": plain_data.pop(owner_name_key, None),
+                "shareholder_name": plain_data.pop(shareholder_name_key, None),
                 "share_percentage": plain_data.pop(share_percentage_key, None),
             })
             index += 1

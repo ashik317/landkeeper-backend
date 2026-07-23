@@ -103,6 +103,11 @@ class PropertyOwnership(CreatedAtUpdatedAtBaseModel):
         null=True,
         blank=True,
     )
+    shareholder_name = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+    )
     share_percentage = models.DecimalField(
         max_digits=5,
         decimal_places=2,
