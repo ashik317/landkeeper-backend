@@ -12,6 +12,8 @@ from .enums import (
     DocumentCategoryType,
     TransactionType,
     Category,
+    PropertyOwnerType,
+    PropertyTenureType,
 )
 from .managers import ApplicantManager
 from .utils import certificate_file_upload_path, tenant_avatar_upload_path
@@ -19,6 +21,12 @@ from .utils import certificate_file_upload_path, tenant_avatar_upload_path
 
 class Property(CreatedAtUpdatedAtBaseModel):
     property_name = models.CharField(max_length=255)
+    property_owner = models.CharField(
+        max_length=64,
+        choices=PropertyOwnerType.choices,
+        null=True,
+        blank=True
+    )
     property_type = models.CharField(
         max_length=20,
         choices=PropertyType.choices,
@@ -37,10 +45,34 @@ class Property(CreatedAtUpdatedAtBaseModel):
         max_digits=10, decimal_places=2, blank=True, null=True
     )
     purchase_date = models.DateField(blank=True, null=True)
+    year_built = models.PositiveIntegerField(blank=True, null=True)
+    property_tenure = models.CharField(
+        max_length=64,
+        choices=PropertyTenureType.choices,
+        null=True,
+        blank=True
+    )
+    remaining_lease_term = models.PositiveIntegerField(blank=True, null=True)
+    monthly_service_charge = models.DecimalField(
+        max_digits=10, decimal_places=2, blank=True, null=True
+    )
+    annual_ground_rent = models.DecimalField(
+        max_digits=10, decimal_places=2, blank=True, null=True
+    )
     bedrooms = models.PositiveIntegerField(blank=True, null=True)
     bathrooms = models.PositiveIntegerField(blank=True, null=True)
-    rent_per_month = models.DecimalField(
+    monthly_rental_income = models.DecimalField(
         max_digits=10, decimal_places=2, blank=True, null=True
+    )
+    council_tax_band = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True
+    )
+    local_authority = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True
     )
     documents = models.ManyToManyField(
         Media, blank=True, related_name="property_documents"
@@ -60,6 +92,25 @@ class Property(CreatedAtUpdatedAtBaseModel):
         return (
             self.mortgages.filter(end_date__isnull=True).order_by("-start_date").first()
         )
+
+class PropertyOwnership(CreatedAtUpdatedAtBaseModel):
+    property = models.ForeignKey(
+        Property,
+        on_delete=models.CASCADE,
+        related_name="ownerships",
+    )
+    owner_name = models.CharField(
+        max_length=255,
+    )
+    share_percentage = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+    )
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self):
+        return f"{self.owner_name} ({self.share_percentage}%)"
 
 
 class Mortgage(CreatedAtUpdatedAtBaseModel):

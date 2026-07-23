@@ -3,12 +3,19 @@ from django.utils.translation import gettext_lazy as _
 
 
 class PropertyType(models.TextChoices):
+    HOUSE = "HOUSE", _("House")
+    FLAT = "FLAT", _("Flat")
+    MAISONETTE = "MAISONETTE", _("Maisonette")
+    BUNGALOW = "BUNGALOW", _("Bungalow")
     RESIDENTIAL = "RESIDENTIAL", _("Residential")
     HMO = "HMO", _("HMO")
     COMMERCIAL = "COMMERCIAL", _("Commercial")
-    MIXED_USE = "MIXED_USE", _("Mixed Use")
     HOLIDAY_LET = "HOLIDAY_LET", _("Holiday Let")
 
+
+class PropertyOwnerType(models.TextChoices):
+    OWN = "OWN", _("Own")
+    COMPANY = "COMPANY", _("Company")
 
 class StatusType(models.TextChoices):
     OCCUPIED = "OCCUPIED", _("Occupied")
@@ -69,3 +76,7 @@ class Category(models.TextChoices):
     MANAGEMENT_FEES = "MANAGEMENT_FEES", _("Management Fees")
     TAX = "TAX", _("Tax")
     OTHER = "OTHER", _("Other")
+
+class PropertyTenureType(models.TextChoices):
+    FREEHOLD = "FREEHOLD", _("Freehold")
+    LEASEHOLD = "LEASEHOLD", _("Leasehold")
