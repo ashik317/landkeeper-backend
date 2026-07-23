@@ -1,6 +1,6 @@
 import os
 from django.contrib.auth.hashers import make_password
-
+import re
 from rest_framework import serializers
 from apps.property.models import (
     Property,
@@ -9,6 +9,7 @@ from apps.property.models import (
     ComplianceAndCertification,
     UploadDocument,
     Finance,
+    PropertyOwnership,
 )
 from common.models import Media, DocumentFile
 from common.serializers import PropertySlimSerializer
@@ -31,11 +32,24 @@ class DocumentFileSerializer(serializers.ModelSerializer):
         fields = ["id", "file", "description"]
 
 
+class PropertyOwnershipSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PropertyOwnership
+        fields = (
+            "id",
+            "owner_name",
+            "share_percentage",
+        )
+
 class PropertySerializer(serializers.ModelSerializer):
     documents_data = serializers.ListField(
         child=serializers.ImageField(), required=False, write_only=True
     )
     documents = MediaSerializer(many=True, read_only=True)
+    ownerships = PropertyOwnershipSerializer(
+        many=True,
+        required=False
+    )
 
     class Meta:
         model = Property
@@ -43,16 +57,25 @@ class PropertySerializer(serializers.ModelSerializer):
             "id",
             "alias",
             "property_name",
+            "property_owner",
             "property_type",
             "status",
             "address",
             "purchase_price",
             "current_value",
             "purchase_date",
+            "year_built",
+            "property_tenure",
+            "remaining_lease_term",
+            "monthly_service_charge",
+            "annual_ground_rent",
             "bedrooms",
             "bathrooms",
-            "rent_per_month",
+            "council_tax_band",
+            "local_authority",
+            "monthly_rental_income",
             "notes",
+            "ownerships",
             "documents",
             "documents_data",
             "created_at",
@@ -66,19 +89,26 @@ class PropertySerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         documents_data = validated_data.pop("documents_data", [])
+        ownerships = validated_data.pop("ownerships", [])
 
         property_obj = Property.objects.create(**validated_data)
 
         documents = [
             Media.objects.create(image=document) for document in documents_data
         ]
-
         property_obj.documents.set(documents)
+
+        for owner in ownerships:
+            PropertyOwnership.objects.create(
+                property=property_obj,
+                **owner
+            )
 
         return property_obj
 
     def update(self, instance, validated_data):
         documents_data = validated_data.pop("documents_data", None)
+        ownerships = validated_data.pop("ownerships", None)
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -91,8 +121,16 @@ class PropertySerializer(serializers.ModelSerializer):
             documents = [
                 Media.objects.create(image=document) for document in documents_data
             ]
-
             instance.documents.set(documents)
+
+        if ownerships is not None:
+            instance.ownerships.all().delete()
+
+            for owner in ownerships:
+                PropertyOwnership.objects.create(
+                    property=instance,
+                    **owner
+                )
 
         return instance
 
@@ -470,7 +508,25 @@ class PropertyOnboardingSerializer(serializers.Serializer):
                     if isinstance(value, str) and value.strip() == "":
                         value = None
 
-                    nested.setdefault(step, {})[field_name] = value
+                    ownership_match = re.match(
+                        r"ownerships\[(\d+)\]\.(\w+)$",
+                        field_name,
+                    )
+
+                    if ownership_match:
+                        index = int(ownership_match.group(1))
+                        owner_field = ownership_match.group(2)
+
+                        property_data = nested.setdefault(step, {})
+                        ownerships = property_data.setdefault("ownerships", [])
+
+                        while len(ownerships) <= index:
+                            ownerships.append({})
+
+                        ownerships[index][owner_field] = value
+                    else:
+                        nested.setdefault(step, {})[field_name] = value
+
                     break
 
         if nested:
