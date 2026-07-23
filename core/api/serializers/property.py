@@ -2,6 +2,7 @@ import os
 from django.contrib.auth.hashers import make_password
 import re
 from rest_framework import serializers
+from apps.property.enums import PropertyOwnerType
 from apps.property.models import (
     Property,
     Mortgage,
@@ -36,17 +37,28 @@ class PropertyOwnershipSerializer(serializers.ModelSerializer):
     class Meta:
         model = PropertyOwnership
         fields = (
-            "id",
             "owner_name",
             "share_percentage",
         )
+        extra_kwargs = {
+            "owner_name": {"required": False, "allow_null": True, "allow_blank": True},
+            "share_percentage": {"required": False, "allow_null": True},
+        }
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        if instance.share_percentage is None:
+            rep.pop("share_percentage", None)
+        if not instance.owner_name:
+            rep.pop("owner_name", None)
+        return rep
 
 class PropertySerializer(serializers.ModelSerializer):
     documents_data = serializers.ListField(
         child=serializers.ImageField(), required=False, write_only=True
     )
     documents = MediaSerializer(many=True, read_only=True)
-    ownerships = PropertyOwnershipSerializer(
+    shareholder = PropertyOwnershipSerializer(
         many=True,
         required=False
     )
@@ -75,7 +87,7 @@ class PropertySerializer(serializers.ModelSerializer):
             "local_authority",
             "monthly_rental_income",
             "notes",
-            "ownerships",
+            "shareholder",
             "documents",
             "documents_data",
             "created_at",
@@ -87,53 +99,90 @@ class PropertySerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+    def validate(self, attrs):
+        property_owner = attrs.get(
+            "property_owner",
+            getattr(self.instance, "property_owner", None),
+        )
+        shareholder = attrs.get("shareholder")
+
+        if shareholder:
+            if property_owner == PropertyOwnerType.COMPANY:
+                for owner in shareholder:
+                    if owner.get("share_percentage") in (None, ""):
+                        raise serializers.ValidationError(
+                            {"shareholder": ["share_percentage is required when property_owner is COMPANY."]}
+                        )
+            elif property_owner == PropertyOwnerType.OWNER:
+                for owner in shareholder:
+                    owner["share_percentage"] = None
+
+        return attrs
+
+    def to_internal_value(self, data):
+        if hasattr(data, "getlist"):
+            plain_data = {}
+            for key in data.keys():
+                values = data.getlist(key)
+                plain_data[key] = values if len(values) > 1 else values[0]
+        else:
+            plain_data = dict(data)
+
+        shareholder = []
+        index = 0
+        while True:
+            owner_name_key = f"shareholder[{index}].owner_name"
+            share_percentage_key = f"shareholder[{index}].share_percentage"
+
+            if owner_name_key not in plain_data and share_percentage_key not in plain_data:
+                break
+
+            shareholder.append({
+                "owner_name": plain_data.pop(owner_name_key, None),
+                "share_percentage": plain_data.pop(share_percentage_key, None),
+            })
+            index += 1
+
+        if shareholder:
+            plain_data["shareholder"] = shareholder
+        elif "shareholder" not in plain_data:
+            plain_data["shareholder"] = []
+
+        return super().to_internal_value(plain_data)
+
     def create(self, validated_data):
         documents_data = validated_data.pop("documents_data", [])
-        ownerships = validated_data.pop("ownerships", [])
+        shareholder = validated_data.pop("shareholder", [])
 
         property_obj = Property.objects.create(**validated_data)
 
-        documents = [
-            Media.objects.create(image=document) for document in documents_data
-        ]
+        documents = [Media.objects.create(image=d) for d in documents_data]
         property_obj.documents.set(documents)
 
-        for owner in ownerships:
-            PropertyOwnership.objects.create(
-                property=property_obj,
-                **owner
-            )
+        for owner in shareholder:
+            PropertyOwnership.objects.create(property=property_obj, **owner)
 
         return property_obj
 
     def update(self, instance, validated_data):
         documents_data = validated_data.pop("documents_data", None)
-        ownerships = validated_data.pop("ownerships", None)
+        shareholder = validated_data.pop("shareholder", None)
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
-
         instance.save()
 
         if documents_data is not None:
             instance.documents.all().delete()
-
-            documents = [
-                Media.objects.create(image=document) for document in documents_data
-            ]
+            documents = [Media.objects.create(image=d) for d in documents_data]
             instance.documents.set(documents)
 
-        if ownerships is not None:
-            instance.ownerships.all().delete()
-
-            for owner in ownerships:
-                PropertyOwnership.objects.create(
-                    property=instance,
-                    **owner
-                )
+        if shareholder is not None:
+            instance.shareholder.all().delete()
+            for owner in shareholder:
+                PropertyOwnership.objects.create(property=instance, **owner)
 
         return instance
-
 
 class MortgageSerializers(serializers.ModelSerializer):
     mortgage_documents = serializers.ListField(
@@ -465,8 +514,6 @@ class PropertyOnboardingSerializer(serializers.Serializer):
         "upload_document": UploadDocumentSerializer,
     }
 
-    # Fields that must always stay lists, even when only one value is submitted,
-    # because the downstream step serializer defines them as ListField(...).
     MULTI_VALUE_FIELDS = {
         "property": {"documents_data"},
         "mortgage": {"mortgage_documents"},
@@ -509,7 +556,7 @@ class PropertyOnboardingSerializer(serializers.Serializer):
                         value = None
 
                     ownership_match = re.match(
-                        r"ownerships\[(\d+)\]\.(\w+)$",
+                        r"shareholder\[(\d+)\]\.(\w+)$",
                         field_name,
                     )
 
@@ -518,12 +565,12 @@ class PropertyOnboardingSerializer(serializers.Serializer):
                         owner_field = ownership_match.group(2)
 
                         property_data = nested.setdefault(step, {})
-                        ownerships = property_data.setdefault("ownerships", [])
+                        shareholder = property_data.setdefault("shareholder", [])
 
-                        while len(ownerships) <= index:
-                            ownerships.append({})
+                        while len(shareholder) <= index:
+                            shareholder.append({})
 
-                        ownerships[index][owner_field] = value
+                        shareholder[index][owner_field] = value
                     else:
                         nested.setdefault(step, {})[field_name] = value
 
