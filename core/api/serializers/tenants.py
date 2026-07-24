@@ -64,8 +64,6 @@ class RentPaymentSerializer(serializers.ModelSerializer):
             "property",
             "organisation",
             "reference",
-            "amount",
-            "due_date",
             "paid_date",
             "status",
             "provider_payment_id",
@@ -122,5 +120,9 @@ class DirectDebitCompleteRequestSerializer(serializers.Serializer):
     session_token = serializers.CharField()
 
 class CardPaymentRequestSerializer(serializers.Serializer):
+    rent_payment = serializers.SlugRelatedField(
+        slug_field="alias",
+        queryset=RentPayment.objects.all(),
+    )
     amount = serializers.DecimalField(max_digits=10, decimal_places=2)
     payment_method_id = serializers.CharField(required=False, allow_blank=True)

@@ -49,20 +49,17 @@ from apps.tenant.stripe_client import create_payment_intent
 from apps.tenant.utils import get_statement_date_range
 
 
-class PaymentMethodListCreateView(ListCreateAPIView):
+class PaymentMethodListCreateView(ListAPIView):
     serializer_class = PaymentMethodSerializer
     permission_classes = [IsAuthenticated, IsTenant]
 
     def get_queryset(self):
         return PaymentMethod.objects.filter(tenant=self.request.user)
 
-    def perform_create(self, serializer):
-        serializer.save(tenant=self.request.user)
-
 
 class PaymentMethodDetailView(RetrieveUpdateDestroyAPIView):
     serializer_class = PaymentMethodSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsTenant]
     lookup_field = "alias"
 
     def get_queryset(self):
@@ -100,10 +97,21 @@ class CardPaymentView(APIView):
         serializer = CardPaymentRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        rent_payment = serializer.validated_data["rent_payment"]
+
+        if rent_payment.tenant_id != request.user.id:
+            return Response(
+                {"error": "Not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+
         intent = create_payment_intent(
             amount=serializer.validated_data["amount"],
             payment_method_id=serializer.validated_data.get("payment_method_id"),
         )
+
+        rent_payment.provider_payment_id = intent.id
+        rent_payment.save(update_fields=["provider_payment_id"])
+
         return Response(
             {"client_secret": intent.client_secret, "status": intent.status},
             status=status.HTTP_201_CREATED,
