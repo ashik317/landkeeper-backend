@@ -78,6 +78,7 @@ class PropertySerializer(serializers.ModelSerializer):
             "alias",
             "property_name",
             "property_owner",
+            "company_name",
             "property_type",
             "status",
             "address",
