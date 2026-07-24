@@ -26,6 +26,9 @@ class Property(CreatedAtUpdatedAtBaseModel):
         choices=PropertyOwnerType.choices,
         default=PropertyOwnerType.OWNER
     )
+    company_name = models.CharField(
+        max_length=64, null=True, blank=True
+    )
     property_type = models.CharField(
         max_length=20,
         choices=PropertyType.choices,
