@@ -19,7 +19,6 @@ from apps.property.models import (
 from common.models import Media, DocumentFile
 from common.serializers import PropertySlimSerializer
 from django.db import transaction
-from api.serializers.auth import LandlordSerializer
 
 
 class MediaSerializer(serializers.ModelSerializer):
@@ -127,14 +126,13 @@ class PropertySerializer(serializers.ModelSerializer):
         user = organisation_user.user
         return {
             "id": user.id,
-            "name": user.get_full_name(),
+            "full_name": user.get_full_name(),
             "email": user.email,
             "phone": user.phone,
-            "profile_image": (
-                user.profile_image.url
-                if user.profile_image
-                else None
-            ),
+            "profile_image": user.profile_image.url if user.profile_image else None,
+            "current_address": user.current_address,
+            "ni_number": user.ni_number,
+            "utr_number": user.utr_number,
         }
 
     def validate(self, attrs):
