@@ -199,27 +199,6 @@ class UserProfileSerializer(serializers.ModelSerializer):
     def get_is_password_available(self, obj):
         return obj.has_usable_password()
 
-class LandlordSerializer(serializers.ModelSerializer):
-    full_name = serializers.SerializerMethodField()
-
-    class Meta:
-        model = User
-        fields = [
-            "id",
-            "full_name",
-            "email",
-            "phone",
-            "profile_image",
-            "current_address",
-            "ni_number",
-            "utr_number",
-            "phone",
-            "profile_image",
-        ]
-
-    def get_full_name(self, obj):
-        return obj.get_full_name()
-
 class TenantProfileSerializer(serializers.ModelSerializer):
     role = serializers.SerializerMethodField()
     is_password_available = serializers.SerializerMethodField()
