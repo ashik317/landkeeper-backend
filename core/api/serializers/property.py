@@ -4,6 +4,8 @@ from django.db import IntegrityError
 from django.contrib.auth.hashers import make_password
 import re
 from rest_framework import serializers
+from apps.organisation.enums import OrganisationRoleChoices
+from apps.organisation.models import OrganisationUser
 from apps.property.enums import PropertyOwnerType
 from apps.property.models import (
     Property,
@@ -17,6 +19,7 @@ from apps.property.models import (
 from common.models import Media, DocumentFile
 from common.serializers import PropertySlimSerializer
 from django.db import transaction
+from api.serializers.auth import LandlordSerializer
 
 
 class MediaSerializer(serializers.ModelSerializer):
@@ -70,12 +73,14 @@ class PropertySerializer(serializers.ModelSerializer):
         many=True,
         required=False
     )
+    landlord = serializers.SerializerMethodField()
 
     class Meta:
         model = Property
         fields = [
             "id",
             "alias",
+            "landlord",
             "property_name",
             "property_owner",
             "company_name",
@@ -104,9 +109,33 @@ class PropertySerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "alias",
+            "landlord",
             "created_at",
             "updated_at",
         ]
+
+    def get_landlord(self, obj):
+        organisation_user = (
+            obj.organisation.organisation_users
+            .select_related("user")
+            .filter(role=OrganisationRoleChoices.LANDLORD)
+            .first()
+        )
+        if organisation_user is None:
+            return None
+
+        user = organisation_user.user
+        return {
+            "id": user.id,
+            "name": user.get_full_name(),
+            "email": user.email,
+            "phone": user.phone,
+            "profile_image": (
+                user.profile_image.url
+                if user.profile_image
+                else None
+            ),
+        }
 
     def validate(self, attrs):
         property_owner = attrs.get(
