@@ -32,12 +32,26 @@ services:
     volumes:
       - pgadmin_data:/var/lib/pgadmin
 
+  redis:
+    image: redis:7-alpine
+    container_name: landkeeper_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   web:
     build: .
     container_name: landkeeper_web
     restart: always
     working_dir: /app/core
-    command: python manage.py runserver 0.0.0.0:8002
+    command: daphne -b 0.0.0.0 -p 8002 core.asgi:application
     volumes:
       - .:/app
       - /app/venv
@@ -48,7 +62,44 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery_worker:
+    build: .
+    container_name: landkeeper_celery_worker
+    restart: always
+    working_dir: /app/core
+    command: celery -A core worker -l info
+    volumes:
+      - .:/app
+      - /app/venv
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery_beat:
+    build: .
+    container_name: landkeeper_celery_beat
+    restart: always
+    working_dir: /app/core
+    command: celery -A core beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - .:/app
+      - /app/venv
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   postgres_data:
   pgadmin_data:
+  redis_data:
