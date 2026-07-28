@@ -9,12 +9,20 @@ from rest_framework_simplejwt.tokens import AccessToken
 @database_sync_to_async
 def get_user_from_token(token):
     from apps.authentication.models import User
+    from apps.tenant.models import Tenant
 
     try:
         validated_token = AccessToken(token)
-        user = User.objects.get(id=validated_token["user_id"])
-        return user
-    except (InvalidToken, TokenError, User.DoesNotExist):
+        user_id = validated_token["user_id"]
+        user_type = validated_token.get("user_type", "staff")
+    except (InvalidToken, TokenError):
+        return AnonymousUser()
+
+    try:
+        if user_type == "tenant":
+            return Tenant.objects.get(id=user_id)
+        return User.objects.get(id=user_id)
+    except (User.DoesNotExist, Tenant.DoesNotExist):
         return AnonymousUser()
 
 
