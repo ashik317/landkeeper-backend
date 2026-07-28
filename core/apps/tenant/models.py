@@ -38,6 +38,9 @@ class PaymentMethod(CreatedAtUpdatedAtBaseModel):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["tenant", "provider", "is_default"]),
+        ]
 
     def __str__(self):
         return f"{self.tenant} - {self.get_method_type_display()} ({self.status})"
@@ -70,7 +73,7 @@ class RentPayment(CreatedAtUpdatedAtBaseModel):
         choices=RentPaymentStatusChoices.choices,
         default=RentPaymentStatusChoices.PENDING,
     )
-    provider_payment_id = models.CharField(max_length=128, blank=True, null=True)
+    provider_payment_id = models.CharField(max_length=128, blank=True, null=True, db_index=True)
     receipt_file = models.FileField(
         upload_to=receipt_upload_path, blank=True, null=True
     )

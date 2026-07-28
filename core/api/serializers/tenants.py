@@ -1,8 +1,10 @@
 from django.db.models import Sum
 from django.utils import timezone
 from rest_framework import serializers
-from apps.tenant.enums import RentPaymentStatusChoices
+
+from apps.tenant.enums import RentPaymentStatusChoices, PaymentProviderChoices
 from apps.tenant.models import PaymentMethod, RentPayment
+
 
 class PaymentMethodSerializer(serializers.ModelSerializer):
     class Meta:
@@ -73,6 +75,14 @@ class RentPaymentSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get("request")
+        if request is not None and hasattr(self.fields.get("payment_method"), "queryset"):
+            self.fields["payment_method"].queryset = PaymentMethod.objects.filter(
+                tenant=request.user
+            )
+
 
 class RentBalanceSummarySerializer(serializers.Serializer):
     current_rent_amount = serializers.SerializerMethodField()
@@ -111,6 +121,7 @@ class RentBalanceSummarySerializer(serializers.Serializer):
         )
         return next_payment.due_date if next_payment else None
 
+
 class DirectDebitSetupRequestSerializer(serializers.Serializer):
     success_redirect_url = serializers.URLField()
 
@@ -119,10 +130,59 @@ class DirectDebitCompleteRequestSerializer(serializers.Serializer):
     redirect_flow_id = serializers.CharField()
     session_token = serializers.CharField()
 
+
 class CardPaymentRequestSerializer(serializers.Serializer):
     rent_payment = serializers.SlugRelatedField(
         slug_field="alias",
         queryset=RentPayment.objects.all(),
     )
-    amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0.01)
     payment_method_id = serializers.CharField(required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        request = self.context["request"]
+        rent_payment = attrs["rent_payment"]
+
+        if rent_payment.tenant_id != request.user.id:
+            raise serializers.ValidationError({"rent_payment": "Not found."})
+
+        if rent_payment.status == RentPaymentStatusChoices.CLEARED:
+            raise serializers.ValidationError(
+                {"rent_payment": "This rent payment is already cleared."}
+            )
+
+        if attrs["amount"] != rent_payment.amount:
+            raise serializers.ValidationError(
+                {"amount": f"Amount must match the rent payment amount of £{rent_payment.amount}."}
+            )
+        return attrs
+
+
+class DirectDebitPaymentRequestSerializer(serializers.Serializer):
+    rent_payment = serializers.SlugRelatedField(
+        slug_field="alias",
+        queryset=RentPayment.objects.all(),
+    )
+
+    def validate_rent_payment(self, rent_payment):
+        request = self.context["request"]
+        if rent_payment.tenant_id != request.user.id:
+            raise serializers.ValidationError("Not found.")
+        if rent_payment.status == RentPaymentStatusChoices.CLEARED:
+            raise serializers.ValidationError("This rent payment is already cleared.")
+        return rent_payment
+
+    def validate(self, attrs):
+        request = self.context["request"]
+        payment_method = PaymentMethod.objects.filter(
+            tenant=request.user,
+            provider=PaymentProviderChoices.GOCARDLESS,
+            is_default=True,
+        ).exclude(provider_mandate_id__isnull=True).exclude(provider_mandate_id="").first()
+
+        if not payment_method:
+            raise serializers.ValidationError(
+                "No active direct debit mandate found. Please set up direct debit first."
+            )
+        attrs["payment_method"] = payment_method
+        return attrs

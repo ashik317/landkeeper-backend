@@ -9,10 +9,11 @@ from api.views.tenants import (
     RentStatementView,
     DirectDebitSetupView,
     DirectDebitCompleteView,
+    DirectDebitPaymentView,
     CardPaymentView,
     DirectDebitCallbackView,
     StripeWebhookView,
-    GoCardlessWebhookView
+    GoCardlessWebhookView,
 )
 
 urlpatterns = [
@@ -57,14 +58,20 @@ urlpatterns = [
         name="direct-debit-complete"
     ),
     path(
-    "/payment-methods/direct-debit/callback",
+        "/payment-methods/direct-debit/callback",
         DirectDebitCallbackView.as_view(),
         name="direct-debit-callback",
     ),
-    path("/rent-payments/pay-with-card",
-         CardPaymentView.as_view(),
-         name="pay-with-card"
-         ),
+    path(
+        "/rent-payments/pay-with-card",
+        CardPaymentView.as_view(),
+        name="pay-with-card"
+    ),
+    path(
+        "/rent-payments/pay-with-direct-debit",
+        DirectDebitPaymentView.as_view(),
+        name="pay-with-direct-debit"
+    ),
     path(
         "/stripe",
         StripeWebhookView.as_view(),
