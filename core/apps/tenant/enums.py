@@ -17,6 +17,7 @@ class PaymentMethodStatusChoices(models.TextChoices):
 
 class RentPaymentStatusChoices(models.TextChoices):
     PENDING = "PENDING", _("Pending")
+    PROCESSING = "PROCESSING", _("Processing")
     CLEARED = "CLEARED", _("Cleared")
     FAILED = "FAILED", _("Failed")
     OVERDUE = "OVERDUE", _("Overdue")

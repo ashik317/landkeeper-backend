@@ -1,57 +1,67 @@
 import hashlib
 import hmac
 import json
-import stripe
-from django.utils import timezone
-from django.conf import settings
-from django.db import IntegrityError
+import logging
 import uuid
 from io import BytesIO
+
+import gocardless_pro
+import stripe
+from django.conf import settings
+from django.db import IntegrityError, transaction
 from django.http import FileResponse
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
+from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import (
     SimpleDocTemplate,
     Table,
     TableStyle,
     Paragraph,
-    Spacer
+    Spacer,
 )
-from reportlab.lib.styles import getSampleStyleSheet
-from rest_framework import generics, permissions, status
+from rest_framework import permissions, status
 from rest_framework.generics import (
     ListCreateAPIView,
     RetrieveUpdateDestroyAPIView,
     ListAPIView,
-    RetrieveAPIView
+    RetrieveAPIView,
 )
-from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
-from apps.tenant.enums import RentPaymentStatusChoices
-from apps.tenant.gocardless_client import create_redirect_flow, complete_redirect_flow
-from apps.tenant.models import PaymentMethod, RentPayment, ProcessedWebhookEvent
 from api.serializers.tenants import (
     PaymentMethodSerializer,
     RentPaymentSerializer,
     RentBalanceSummarySerializer,
     CardPaymentRequestSerializer,
     DirectDebitSetupRequestSerializer,
-    DirectDebitCompleteRequestSerializer
+    DirectDebitCompleteRequestSerializer,
+    DirectDebitPaymentRequestSerializer,
 )
+from apps.tenant.enums import RentPaymentStatusChoices
+from apps.tenant.gocardless_client import (
+    create_redirect_flow,
+    complete_redirect_flow,
+    create_payment as create_gocardless_payment,
+    cancel_mandate,
+)
+from apps.tenant.models import PaymentMethod, RentPayment, ProcessedWebhookEvent
 from apps.tenant.permission import IsTenant
 from apps.tenant.stripe_client import create_payment_intent
 from apps.tenant.utils import get_statement_date_range
 
+logger = logging.getLogger("apps.tenant.payments")
+
 
 class PaymentMethodListCreateView(ListAPIView):
     serializer_class = PaymentMethodSerializer
-    permission_classes = [IsAuthenticated, IsTenant]
+    permission_classes = [permissions.IsAuthenticated, IsTenant]
 
     def get_queryset(self):
         return PaymentMethod.objects.filter(tenant=self.request.user)
@@ -59,19 +69,40 @@ class PaymentMethodListCreateView(ListAPIView):
 
 class PaymentMethodDetailView(RetrieveUpdateDestroyAPIView):
     serializer_class = PaymentMethodSerializer
-    permission_classes = [IsAuthenticated, IsTenant]
+    permission_classes = [permissions.IsAuthenticated, IsTenant]
     lookup_field = "alias"
 
     def get_queryset(self):
         return PaymentMethod.objects.filter(tenant=self.request.user)
 
+    def perform_destroy(self, instance):
+        # Without this, deleting a PaymentMethod row leaves the mandate
+        # ACTIVE on GoCardless's side — the tenant could still be charged
+        # via a stale mandate_id if it ever leaked into another record.
+        if instance.provider == "GOCARDLESS" and instance.provider_mandate_id:
+            try:
+                cancel_mandate(instance.provider_mandate_id)
+            except gocardless_pro.errors.GoCardlessProError:
+                logger.exception(
+                    "Failed to cancel GoCardless mandate on delete",
+                    extra={"mandate_id": instance.provider_mandate_id},
+                )
+                # Don't block the delete on a provider-side failure; the
+                # mandate cancellation failure is logged for manual follow-up.
+        instance.delete()
+
 
 class RentPaymentListCreateView(ListCreateAPIView):
     serializer_class = RentPaymentSerializer
-    permission_classes = [IsAuthenticated, IsTenant]
+    permission_classes = [permissions.IsAuthenticated, IsTenant]
 
     def get_queryset(self):
         return RentPayment.objects.filter(tenant=self.request.user)
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["request"] = self.request
+        return context
 
     def perform_create(self, serializer):
         serializer.save(
@@ -83,7 +114,7 @@ class RentPaymentListCreateView(ListCreateAPIView):
 
 class RentPaymentDetailView(RetrieveAPIView):
     serializer_class = RentPaymentSerializer
-    permission_classes = [IsAuthenticated, IsTenant]
+    permission_classes = [permissions.IsAuthenticated, IsTenant]
     lookup_field = "alias"
 
     def get_queryset(self):
@@ -91,105 +122,170 @@ class RentPaymentDetailView(RetrieveAPIView):
 
 
 class CardPaymentView(APIView):
-    permission_classes = [IsAuthenticated, IsTenant]
+    permission_classes = [permissions.IsAuthenticated, IsTenant]
 
     def post(self, request):
-        serializer = CardPaymentRequestSerializer(data=request.data)
+        serializer = CardPaymentRequestSerializer(
+            data=request.data, context={"request": request}
+        )
         serializer.is_valid(raise_exception=True)
-
         rent_payment = serializer.validated_data["rent_payment"]
 
-        if rent_payment.tenant_id != request.user.id:
+        try:
+            intent = create_payment_intent(
+                amount=serializer.validated_data["amount"],
+                payment_method_id=serializer.validated_data.get("payment_method_id"),
+                idempotency_key=f"card-{rent_payment.alias}",
+                metadata={"rent_payment_alias": str(rent_payment.alias)},
+            )
+        except stripe.error.CardError as e:
             return Response(
-                {"error": "Not found."}, status=status.HTTP_404_NOT_FOUND
+                {"error": e.user_message or "Your card was declined."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except stripe.error.StripeError:
+            return Response(
+                {"error": "Payment provider error. Please try again."},
+                status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        intent = create_payment_intent(
-            amount=serializer.validated_data["amount"],
-            payment_method_id=serializer.validated_data.get("payment_method_id"),
-        )
-
         rent_payment.provider_payment_id = intent.id
-        rent_payment.save(update_fields=["provider_payment_id"])
+        rent_payment.status = RentPaymentStatusChoices.PROCESSING
+        rent_payment.save(update_fields=["provider_payment_id", "status"])
 
         return Response(
             {"client_secret": intent.client_secret, "status": intent.status},
             status=status.HTTP_201_CREATED,
         )
 
+
 class DirectDebitSetupView(APIView):
-    permission_classes = [IsAuthenticated, IsTenant]
+    permission_classes = [permissions.IsAuthenticated, IsTenant]
 
     def post(self, request):
         serializer = DirectDebitSetupRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         tenant = request.user
-
         session_token = str(uuid.uuid4())
 
-        flow = create_redirect_flow(
-            tenant=tenant,
-            session_token=session_token,
-            success_redirect_url=serializer.validated_data["success_redirect_url"],
-        )
+        try:
+            flow = create_redirect_flow(
+                tenant=tenant,
+                session_token=session_token,
+                success_redirect_url=serializer.validated_data["success_redirect_url"],
+            )
+        except gocardless_pro.errors.GoCardlessProError:
+            logger.exception("GoCardless create_redirect_flow failed", extra={"tenant_id": tenant.id})
+            return Response(
+                {"error": "Payment provider error. Please try again."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
 
         return Response(
-            {
-                "redirect_url": flow.redirect_url,
-                "session_token": session_token
-            },
-            status=status.HTTP_201_CREATED
+            {"redirect_url": flow.redirect_url, "session_token": session_token},
+            status=status.HTTP_201_CREATED,
         )
 
 
 class DirectDebitCompleteView(APIView):
-    permission_classes = [IsAuthenticated, IsTenant]
+    permission_classes = [permissions.IsAuthenticated, IsTenant]
 
     def post(self, request):
         serializer = DirectDebitCompleteRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         tenant = request.user
 
-        flow = complete_redirect_flow(
-            serializer.validated_data["redirect_flow_id"],
-            serializer.validated_data["session_token"],
-        )
+        try:
+            flow = complete_redirect_flow(
+                serializer.validated_data["redirect_flow_id"],
+                serializer.validated_data["session_token"],
+            )
+        except gocardless_pro.errors.InvalidStateError:
+            return Response(
+                {"error": "This direct debit setup link has expired or already been used."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except gocardless_pro.errors.GoCardlessProError:
+            logger.exception("GoCardless complete_redirect_flow failed", extra={"tenant_id": tenant.id})
+            return Response(
+                {"error": "Payment provider error. Please try again."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
 
-        PaymentMethod.objects.filter(tenant=tenant, is_default=True).update(
-            is_default=False
-        )
+        with transaction.atomic():
+            PaymentMethod.objects.select_for_update().filter(
+                tenant=tenant, is_default=True
+            ).update(is_default=False)
 
-        payment_method = PaymentMethod.objects.create(
-            tenant=tenant,
-            provider="GOCARDLESS",
-            method_type="DIRECT_DEBIT",
-            provider_customer_id=flow.links.customer,
-            provider_mandate_id=flow.links.mandate,
-            status="ACTIVE",
-            is_default=True,
-        )
+            payment_method = PaymentMethod.objects.create(
+                tenant=tenant,
+                provider="GOCARDLESS",
+                method_type="DIRECT_DEBIT",
+                provider_customer_id=flow.links.customer,
+                provider_mandate_id=flow.links.mandate,
+                status="ACTIVE",
+                is_default=True,
+            )
+
         return Response(
             PaymentMethodSerializer(payment_method).data,
-            status=status.HTTP_201_CREATED
+            status=status.HTTP_201_CREATED,
         )
+
+class DirectDebitPaymentView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsTenant]
+
+    def post(self, request):
+        serializer = DirectDebitPaymentRequestSerializer(
+            data=request.data, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        rent_payment = serializer.validated_data["rent_payment"]
+        payment_method = serializer.validated_data["payment_method"]
+
+        try:
+            payment = create_gocardless_payment(
+                mandate_id=payment_method.provider_mandate_id,
+                amount=rent_payment.amount,
+                idempotency_key=f"dd-{rent_payment.alias}",
+                metadata={"rent_payment_alias": str(rent_payment.alias)},
+            )
+        except gocardless_pro.errors.InvalidStateError as e:
+            return Response(
+                {"error": "Mandate is not active. Please set up direct debit again.", "detail": str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except gocardless_pro.errors.GoCardlessProError:
+            return Response(
+                {"error": "Payment provider error. Please try again."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        rent_payment.provider_payment_id = payment.id
+        rent_payment.payment_method = payment_method
+        rent_payment.status = RentPaymentStatusChoices.PROCESSING
+        rent_payment.save(update_fields=["provider_payment_id", "payment_method", "status"])
+
+        return Response(
+            {"provider_payment_id": payment.id, "status": payment.status},
+            status=status.HTTP_201_CREATED,
+        )
+
 
 class DirectDebitCallbackView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
         redirect_flow_id = request.GET.get("redirect_flow_id")
+        return Response({"redirect_flow_id": redirect_flow_id})
 
-        return Response({
-            "redirect_flow_id": redirect_flow_id
-        })
 
 class RentBalanceSummaryView(APIView):
-    permission_classes = [IsAuthenticated, IsTenant]
+    permission_classes = [permissions.IsAuthenticated, IsTenant]
 
     def get(self, request):
-        tenant = request.user
-        serializer = RentBalanceSummarySerializer(tenant)
+        serializer = RentBalanceSummarySerializer(request.user)
         return Response(serializer.data)
 
 
@@ -200,7 +296,7 @@ class RentStatementView(APIView):
     api/rent-statements/?period=weekly&year=2026&week=29
     api/rent-statements/?period=custom&start_date=2026-01-01&end_date=2026-03-31
     """
-    permission_classes = [IsAuthenticated, IsTenant]
+    permission_classes = [permissions.IsAuthenticated, IsTenant]
 
     def get(self, request):
         period = request.query_params.get("period", "yearly")
@@ -208,7 +304,7 @@ class RentStatementView(APIView):
         try:
             start, end, label = get_statement_date_range(period, request.query_params)
         except ValueError as e:
-            return Response({"error": str(e)}, status=400)
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         tenant = request.user
         payments = RentPayment.objects.filter(
@@ -266,6 +362,14 @@ class WebhookRateThrottle(SimpleRateThrottle):
         return self.cache_format % {"scope": self.scope, "ident": ident}
 
 
+# Statuses that must never be overwritten by a later/out-of-order webhook —
+# once money has actually moved (or been refunded) that fact is final.
+_TERMINAL_STATUSES = {
+    RentPaymentStatusChoices.CLEARED,
+    RentPaymentStatusChoices.REFUNDED,
+}
+
+
 @method_decorator(csrf_exempt, name="dispatch")
 class StripeWebhookView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -280,34 +384,44 @@ class StripeWebhookView(APIView):
                 payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
             )
         except (ValueError, stripe.error.SignatureVerificationError):
+            logger.warning("Stripe webhook signature verification failed")
             return Response(
                 {"error": "Invalid payload or signature"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if not self._claim_event(event["id"]):
-            return Response({"received": True, "duplicate": True}, status=status.HTTP_200_OK)
-
         try:
             event_type = event["type"]
             data_object = event["data"]["object"]
         except (KeyError, TypeError):
+            logger.warning("Stripe webhook malformed payload", extra={"event_id": event.get("id")})
             return Response(
                 {"error": "Malformed event payload"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if event_type == "payment_intent.succeeded":
-            self._mark_payment(data_object["id"], RentPaymentStatusChoices.CLEARED)
+        try:
+            with transaction.atomic():
+                # Claim + process inside the same transaction: if processing
+                # raises, the claim rolls back too, so Stripe's retry can
+                # actually succeed later instead of being silently swallowed
+                # as a "duplicate".
+                if not self._claim_event(event["id"]):
+                    return Response({"received": True, "duplicate": True}, status=status.HTTP_200_OK)
 
-        elif event_type == "payment_intent.payment_failed":
-            self._mark_payment(
-                data_object["id"],
-                RentPaymentStatusChoices.FAILED,
-                failure_reason=data_object.get("last_payment_error", {}).get(
-                    "message", "Payment failed"
-                ),
-            )
+                if event_type == "payment_intent.succeeded":
+                    self._mark_payment(data_object["id"], RentPaymentStatusChoices.CLEARED)
+                elif event_type == "payment_intent.payment_failed":
+                    self._mark_payment(
+                        data_object["id"],
+                        RentPaymentStatusChoices.FAILED,
+                        failure_reason=data_object.get("last_payment_error", {}).get(
+                            "message", "Payment failed"
+                        ),
+                    )
+        except Exception:
+            logger.exception("Stripe webhook processing failed", extra={"event_id": event.get("id")})
+            return Response({"error": "Processing error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return Response({"received": True}, status=status.HTTP_200_OK)
 
@@ -327,9 +441,15 @@ class StripeWebhookView(APIView):
         if failure_reason:
             update_fields["failure_reason"] = failure_reason
 
-        RentPayment.objects.filter(
+        updated = RentPayment.objects.filter(
             provider_payment_id=provider_payment_id
-        ).update(**update_fields)
+        ).exclude(status__in=_TERMINAL_STATUSES).update(**update_fields)
+
+        if not updated:
+            logger.warning(
+                "Stripe webhook: no matching non-terminal RentPayment",
+                extra={"provider_payment_id": provider_payment_id, "new_status": new_status},
+            )
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -342,6 +462,7 @@ class GoCardlessWebhookView(APIView):
         signature = request.META.get("HTTP_WEBHOOK_SIGNATURE", "")
 
         if not self._is_valid_signature(raw_body, signature):
+            logger.warning("GoCardless webhook signature verification failed")
             return Response(
                 {"error": "Invalid signature"}, status=status.HTTP_400_BAD_REQUEST
             )
@@ -352,48 +473,55 @@ class GoCardlessWebhookView(APIView):
             return Response(
                 {"error": "Malformed JSON payload"}, status=status.HTTP_400_BAD_REQUEST
             )
-        events = payload.get("events", [])
 
-        incoming_ids = [e.get("id") for e in events if e.get("id")]
-        already_seen = set(
-            ProcessedWebhookEvent.objects.filter(
-                provider="gocardless", event_id__in=incoming_ids
-            ).values_list("event_id", flat=True)
-        )
-        new_ids = [eid for eid in incoming_ids if eid not in already_seen]
-        if new_ids:
-            ProcessedWebhookEvent.objects.bulk_create(
-                [
-                    ProcessedWebhookEvent(provider="gocardless", event_id=eid)
-                    for eid in new_ids
-                ],
-                ignore_conflicts=True,
-            )
+        events = payload.get("events", [])
 
         for event in events:
             event_id = event.get("id")
-            if not event_id or event_id in already_seen:
+            if not event_id:
                 continue
 
-            resource_type = event.get("resource_type")
-            action = event.get("action")
-            links = event.get("links", {})
+            try:
+                with transaction.atomic():
+                    # Claim and process this single event atomically, same
+                    # reasoning as the Stripe view: a mid-processing failure
+                    # must not leave the event permanently marked "seen".
+                    if not self._claim_event(event_id):
+                        continue
 
-            if resource_type == "payments":
-                provider_payment_id = links.get("payment")
+                    resource_type = event.get("resource_type")
+                    action = event.get("action")
+                    links = event.get("links", {})
 
-                if action == "confirmed":
-                    self._mark_payment(
-                        provider_payment_id, RentPaymentStatusChoices.CLEARED
-                    )
-                elif action == "failed":
-                    self._mark_payment(
-                        provider_payment_id,
-                        RentPaymentStatusChoices.FAILED,
-                        failure_reason="Direct debit payment failed",
-                    )
+                    if resource_type == "payments":
+                        provider_payment_id = links.get("payment")
+
+                        if action == "confirmed":
+                            self._mark_payment(
+                                provider_payment_id, RentPaymentStatusChoices.CLEARED
+                            )
+                        elif action == "failed":
+                            self._mark_payment(
+                                provider_payment_id,
+                                RentPaymentStatusChoices.FAILED,
+                                failure_reason="Direct debit payment failed",
+                            )
+            except Exception:
+                logger.exception("GoCardless webhook event processing failed", extra={"event_id": event_id})
+                # Continue to the next event rather than failing the whole
+                # batch — this event was not claimed (rollback), so
+                # GoCardless's retry of the whole payload will pick it up again.
+                continue
 
         return Response({"received": True}, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _claim_event(event_id):
+        try:
+            ProcessedWebhookEvent.objects.create(provider="gocardless", event_id=event_id)
+            return True
+        except IntegrityError:
+            return False
 
     @staticmethod
     def _is_valid_signature(raw_body, signature):
@@ -412,6 +540,12 @@ class GoCardlessWebhookView(APIView):
         if failure_reason:
             update_fields["failure_reason"] = failure_reason
 
-        RentPayment.objects.filter(
+        updated = RentPayment.objects.filter(
             provider_payment_id=provider_payment_id
-        ).update(**update_fields)
+        ).exclude(status__in=_TERMINAL_STATUSES).update(**update_fields)
+
+        if not updated:
+            logger.warning(
+                "GoCardless webhook: no matching non-terminal RentPayment",
+                extra={"provider_payment_id": provider_payment_id, "new_status": new_status},
+            )
