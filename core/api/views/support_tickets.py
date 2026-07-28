@@ -12,6 +12,7 @@ from ..serializers.support_tickets import (
     SupportTicketSerializer,
     SupportTicketCommentSerializer,
 )
+from apps.notification import services as notification_services
 
 
 class SupportTicketListView(ListCreateAPIView):
@@ -59,10 +60,11 @@ class SupportTicketListView(ListCreateAPIView):
             else user.get_organisation()
         )
 
-        serializer.save(
+        ticket = serializer.save(
             created_by=user,
             organisation=organisation,
         )
+        notification_services.notify_ticket_created(ticket)
 
 
 class SupportTicketDetailView(RetrieveUpdateDestroyAPIView):
@@ -85,6 +87,15 @@ class SupportTicketDetailView(RetrieveUpdateDestroyAPIView):
     def get_object(self):
         ticket_alias = self.kwargs.get("ticket_alias")
         return get_object_or_404(self.get_queryset(), alias=ticket_alias)
+
+    def perform_update(self, serializer):
+        previous_status = serializer.instance.status
+        ticket = serializer.save(updated_by=self.request.user)
+
+        if ticket.status != previous_status:
+            notification_services.notify_ticket_status_updated(
+                ticket, updated_by=self.request.user
+            )
 
 
 class SupportTicketCommentListCreateView(ListCreateAPIView):
@@ -116,7 +127,8 @@ class SupportTicketCommentListCreateView(ListCreateAPIView):
         return context
 
     def perform_create(self, serializer):
-        serializer.save(author=self.request.user, ticket=self.get_ticket())
+        comment = serializer.save(author=self.request.user, ticket=self.get_ticket())
+        notification_services.notify_new_comment(comment)
 
 
 class SupportTicketCommentDetailView(RetrieveUpdateDestroyAPIView):

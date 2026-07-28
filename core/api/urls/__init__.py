@@ -7,4 +7,5 @@ urlpatterns = [
     path("", include("api.urls.property")),
     path("/support-tickets", include("api.urls.support_tickets")),
     path("/tenant", include("api.urls.tenants")),
+    path("/notifications", include("api.urls.notifications")),
 ]
