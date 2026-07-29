@@ -15,8 +15,8 @@ from api.views.tenants import (
     DirectDebitCallbackView,
     StripeWebhookView,
     GoCardlessWebhookView,
-    TenantPropertyDetailsView,
-    TenantFinancialOverviewView,
+    FinancialOverviewListView,
+    PropertyTenancyListView,
 )
 
 urlpatterns = [
@@ -87,12 +87,12 @@ urlpatterns = [
     ),
     path(
         "/property-and-tenancy-details",
-        TenantPropertyDetailsView.as_view(),
+        PropertyTenancyListView.as_view(),
         name="property-details"
     ),
     path(
         "/financial-overview",
-        TenantFinancialOverviewView.as_view(),
+        FinancialOverviewListView.as_view(),
         name="financial-overview"
     ),
 ]

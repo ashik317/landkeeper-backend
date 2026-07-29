@@ -5,10 +5,9 @@ import json
 import logging
 import uuid
 from io import BytesIO
-from datetime import date
 import gocardless_pro
 import stripe
-from django.shortcuts import get_object_or_404
+from datetime import date, timedelta
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.http import FileResponse
@@ -537,77 +536,102 @@ class GoCardlessWebhookView(APIView):
             )
 
 
-class TenantPropertyDetailsView(APIView):
-    permission_classes = [IsAuthenticated]
+ENDING_SOON_DAYS = 30
+class PropertyTenancyListView(APIView):
+    permission_classes = [IsTenant]
 
     def get(self, request):
-        tenant = Tenant.objects.select_related("property").get(id=request.user.id)
-
         today = date.today()
-        is_active = bool(
-            tenant.is_active
-            and tenant.tenancy_start_date
-            and tenant.tenancy_start_date <= today
-            and (tenant.tenancy_end_date is None or tenant.tenancy_end_date >= today)
+        tenants = (
+            Tenant.objects
+            .select_related("property")
+            .filter(id=request.user.id)
         )
 
-        tenancy_term = None
-        if tenant.tenancy_start_date and tenant.tenancy_end_date:
-            tenancy_term = (
-                f"{tenant.tenancy_start_date:%b %-d, %Y} - "
-                f"{tenant.tenancy_end_date:%b %-d, %Y}"
+        results = []
+        for tenant in tenants:
+            tenancy_term = None
+            length = None
+            status = "Inactive"
+
+            if tenant.tenancy_start_date and tenant.tenancy_end_date:
+                tenancy_term = (
+                    f"{tenant.tenancy_start_date:%b %-d, %Y} - "
+                    f"{tenant.tenancy_end_date:%b %-d, %Y}"
+                )
+                months = round(
+                    (tenant.tenancy_end_date - tenant.tenancy_start_date).days / 30
+                )
+                length = f"{months}-month agreement"
+
+                if tenant.tenancy_end_date < today:
+                    status = "Expired"
+                elif tenant.tenancy_end_date <= today + timedelta(days=ENDING_SOON_DAYS):
+                    status = "Ending soon"
+                elif tenant.tenancy_start_date <= today:
+                    status = "Active"
+
+            results.append({
+                "tenant_id": tenant.id,
+                "property_address": tenant.property.address,
+                "tenancy_term": tenancy_term,
+                "length": length,
+                "status": status,
+            })
+
+        return Response(results)
+
+
+class FinancialOverviewListView(APIView):
+    permission_classes = [IsTenant]
+
+    def get(self, request):
+        today = date.today()
+        tenants = (
+            Tenant.objects
+            .select_related("property")
+            .filter(id=request.user.id)
+        )
+
+        results = []
+        for tenant in tenants:
+            payments = RentPayment.objects.filter(tenant=tenant).order_by("-due_date")[:10]
+
+            outstanding_balance = sum(
+                p.amount for p in payments if p.status != "PAID"
             )
 
-        return Response({
-            "property_address": tenant.property.address,
-            "tenancy_term": tenancy_term,
-            "status": "Active" if is_active else "Inactive",
-        })
+            next_rent_due_date = None
+            upcoming = (
+                RentPayment.objects
+                .filter(tenant=tenant, due_date__gte=today)
+                .exclude(status="PAID")
+                .order_by("due_date")
+                .first()
+            )
+            if upcoming:
+                next_rent_due_date = upcoming.due_date
+            elif tenant.tenancy_start_date:
+                rent_day = tenant.tenancy_start_date.day
+                year, month = today.year, today.month
+                last_day_this_month = calendar.monthrange(year, month)[1]
+                due_this_month = date(year, month, min(rent_day, last_day_this_month))
 
+                if due_this_month >= today:
+                    next_rent_due_date = due_this_month
+                else:
+                    month += 1
+                    if month > 12:
+                        month = 1
+                        year += 1
+                    last_day_next_month = calendar.monthrange(year, month)[1]
+                    next_rent_due_date = date(year, month, min(rent_day, last_day_next_month))
 
-class TenantFinancialOverviewView(APIView):
-    permission_classes = [IsAuthenticated]
+            results.append({
+                "tenant_id": tenant.id,
+                "next_rent_due_date": next_rent_due_date,
+                "outstanding_balance": outstanding_balance,
+                "rent_amount": tenant.rent_amount,
+            })
 
-    def get(self, request):
-        tenant = request.user
-        today = date.today()
-
-        # Last 10 rent payments, used only to compute totals below
-        payments = RentPayment.objects.filter(tenant=tenant).order_by("-due_date")[:10]
-
-        # Outstanding balance = sum of unpaid amounts
-        outstanding_balance = sum(
-            p.amount for p in payments if p.status != "PAID"
-        )
-
-        next_rent_due_date = None
-        upcoming = (
-            RentPayment.objects
-            .filter(tenant=tenant, due_date__gte=today)
-            .exclude(status="PAID")
-            .order_by("due_date")
-            .first()
-        )
-        if upcoming:
-            next_rent_due_date = upcoming.due_date
-        elif tenant.tenancy_start_date:
-            rent_day = tenant.tenancy_start_date.day
-            year, month = today.year, today.month
-            last_day_this_month = calendar.monthrange(year, month)[1]
-            due_this_month = date(year, month, min(rent_day, last_day_this_month))
-
-            if due_this_month >= today:
-                next_rent_due_date = due_this_month
-            else:
-                month += 1
-                if month > 12:
-                    month = 1
-                    year += 1
-                last_day_next_month = calendar.monthrange(year, month)[1]
-                next_rent_due_date = date(year, month, min(rent_day, last_day_next_month))
-
-        return Response({
-            "rent_amount": tenant.rent_amount,
-            "outstanding_balance": outstanding_balance,
-            "next_rent_due_date": next_rent_due_date,
-        })
+        return Response(results)
