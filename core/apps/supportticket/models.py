@@ -37,6 +37,7 @@ class SupportTicket(CreatedAtUpdatedAtBaseModel):
         default=SupportTicketPriority.WHEN_POSSIBLE,
     )
     ticket_id = models.CharField(max_length=50, blank=True, unique=True)
+    is_deleted = models.BooleanField(default=False)
     organisation = models.ForeignKey(
         Organisation,
         on_delete=models.CASCADE,
@@ -50,6 +51,10 @@ class SupportTicket(CreatedAtUpdatedAtBaseModel):
         verbose_name = _("Support Ticket")
         verbose_name_plural = _("Support Tickets")
         ordering = ["-created_at", "-updated_at"]
+
+    def soft_delete(self):
+        self.is_deleted = True
+        self.save(update_fields=["is_deleted"])
 
     def __str__(self):
         return f"Support Ticket #{self.id} - {self.subject}"

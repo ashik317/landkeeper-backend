@@ -97,6 +97,9 @@ class SupportTicketDetailView(RetrieveUpdateDestroyAPIView):
                 ticket, updated_by=self.request.user
             )
 
+    def perform_destroy(self, instance):
+        instance.soft_delete()
+
 
 class SupportTicketCommentListCreateView(ListCreateAPIView):
     serializer_class = SupportTicketCommentSerializer

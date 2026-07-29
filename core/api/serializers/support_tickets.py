@@ -62,6 +62,7 @@ class SupportTicketSerializer(serializers.ModelSerializer):
             "created_at",
             "created_by",
             "organisation",
+            "is_deleted",
         ]
         read_only_fields = [
             "alias",
