@@ -1,4 +1,5 @@
 from django.urls import path
+from rest_framework.views import APIView
 
 from api.views.tenants import (
     PaymentMethodListCreateView,
@@ -14,6 +15,8 @@ from api.views.tenants import (
     DirectDebitCallbackView,
     StripeWebhookView,
     GoCardlessWebhookView,
+    TenantPropertyDetailsView,
+    TenantFinancialOverviewView,
 )
 
 urlpatterns = [
@@ -81,5 +84,15 @@ urlpatterns = [
         "/gocardless",
         GoCardlessWebhookView.as_view(),
         name="webhook-gocardless"
+    ),
+    path(
+        "/property-details",
+        TenantPropertyDetailsView.as_view(),
+        name="property-details"
+    ),
+    path(
+        "/financial-overview",
+        TenantFinancialOverviewView.as_view(),
+        name="financial-overview"
     ),
 ]

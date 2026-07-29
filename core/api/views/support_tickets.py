@@ -36,6 +36,7 @@ class SupportTicketListView(ListCreateAPIView):
         qs = (
             SupportTicket.objects.select_related("created_by", "organisation")
             .prefetch_related("files")
+            .filter(is_deleted=False)
             .order_by("-created_at")
         )
 
@@ -45,7 +46,6 @@ class SupportTicketListView(ListCreateAPIView):
                 qs = qs.filter(organisation__alias=organisation_alias)
             return qs
 
-        # Non-superusers only ever see tickets belonging to their own organisation.
         organisation = user.get_organisation()
         if not organisation:
             return qs.none()
