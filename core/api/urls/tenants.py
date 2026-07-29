@@ -86,7 +86,7 @@ urlpatterns = [
         name="webhook-gocardless"
     ),
     path(
-        "/property-details",
+        "/property-and-tenancy-details",
         TenantPropertyDetailsView.as_view(),
         name="property-details"
     ),
