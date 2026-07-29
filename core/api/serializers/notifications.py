@@ -6,7 +6,7 @@ from apps.supportticket.models import SupportTicket
 class NotificationSerializer(serializers.ModelSerializer):
     title = serializers.CharField(source="get_notification_type_display", read_only=True)
     description = serializers.CharField(source="message", read_only=True)
-    is_deleted = serializers.SerializerMethodField()
+    data = serializers.SerializerMethodField()
 
     class Meta:
         model = Notification
@@ -15,22 +15,22 @@ class NotificationSerializer(serializers.ModelSerializer):
             "title",
             "description",
             "data",
-            "is_deleted",
             "is_read",
             "read_at",
             "created_at",
         ]
         read_only_fields = fields
 
-    def get_is_deleted(self, obj):
-        ticket_alias = obj.data.get("ticket_alias")
+    def get_data(self, obj):
+        data = dict(obj.data)
 
-        if not ticket_alias:
-            return False
+        if data.get("type") == "SUPPORT_TICKET":
+            alias = data.get("alias")
 
-        ticket = SupportTicket.objects.filter(alias=ticket_alias).first()
+            ticket = SupportTicket.objects.filter(alias=alias).first()
 
-        if ticket is None:
-            return True
+            data["is_deleted"] = (
+                ticket.is_deleted if ticket else True
+            )
 
-        return ticket.is_deleted
+        return data
