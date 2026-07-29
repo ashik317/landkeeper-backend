@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from apps.notification.models import Notification
+from apps.supportticket.models import SupportTicket
 
 
 class NotificationSerializer(serializers.ModelSerializer):
@@ -22,5 +23,14 @@ class NotificationSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_is_deleted(self, obj):
-        ticket = obj.support_ticket
-        return ticket.is_deleted if ticket else False
+        ticket_alias = obj.data.get("ticket_alias")
+
+        if not ticket_alias:
+            return False
+
+        ticket = SupportTicket.objects.filter(alias=ticket_alias).first()
+
+        if ticket is None:
+            return True
+
+        return ticket.is_deleted
