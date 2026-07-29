@@ -1,12 +1,14 @@
+import calendar
 import hashlib
 import hmac
 import json
 import logging
 import uuid
 from io import BytesIO
-
+from datetime import date
 import gocardless_pro
 import stripe
+from django.shortcuts import get_object_or_404
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.http import FileResponse
@@ -31,6 +33,7 @@ from rest_framework.generics import (
     ListAPIView,
     RetrieveAPIView,
 )
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
@@ -44,6 +47,7 @@ from api.serializers.tenants import (
     DirectDebitCompleteRequestSerializer,
     DirectDebitPaymentRequestSerializer,
 )
+from apps.property.models import Tenant
 from apps.tenant.enums import RentPaymentStatusChoices
 from apps.tenant.gocardless_client import (
     create_redirect_flow,
@@ -61,7 +65,7 @@ logger = logging.getLogger("apps.tenant.payments")
 
 class PaymentMethodListCreateView(ListAPIView):
     serializer_class = PaymentMethodSerializer
-    permission_classes = [permissions.IsAuthenticated, IsTenant]
+    permission_classes = [IsTenant]
 
     def get_queryset(self):
         return PaymentMethod.objects.filter(tenant=self.request.user)
@@ -69,16 +73,13 @@ class PaymentMethodListCreateView(ListAPIView):
 
 class PaymentMethodDetailView(RetrieveUpdateDestroyAPIView):
     serializer_class = PaymentMethodSerializer
-    permission_classes = [permissions.IsAuthenticated, IsTenant]
+    permission_classes = [IsTenant]
     lookup_field = "alias"
 
     def get_queryset(self):
         return PaymentMethod.objects.filter(tenant=self.request.user)
 
     def perform_destroy(self, instance):
-        # Without this, deleting a PaymentMethod row leaves the mandate
-        # ACTIVE on GoCardless's side — the tenant could still be charged
-        # via a stale mandate_id if it ever leaked into another record.
         if instance.provider == "GOCARDLESS" and instance.provider_mandate_id:
             try:
                 cancel_mandate(instance.provider_mandate_id)
@@ -87,14 +88,12 @@ class PaymentMethodDetailView(RetrieveUpdateDestroyAPIView):
                     "Failed to cancel GoCardless mandate on delete",
                     extra={"mandate_id": instance.provider_mandate_id},
                 )
-                # Don't block the delete on a provider-side failure; the
-                # mandate cancellation failure is logged for manual follow-up.
         instance.delete()
 
 
 class RentPaymentListCreateView(ListCreateAPIView):
     serializer_class = RentPaymentSerializer
-    permission_classes = [permissions.IsAuthenticated, IsTenant]
+    permission_classes = [IsTenant]
 
     def get_queryset(self):
         return RentPayment.objects.filter(tenant=self.request.user)
@@ -114,7 +113,7 @@ class RentPaymentListCreateView(ListCreateAPIView):
 
 class RentPaymentDetailView(RetrieveAPIView):
     serializer_class = RentPaymentSerializer
-    permission_classes = [permissions.IsAuthenticated, IsTenant]
+    permission_classes = [IsTenant]
     lookup_field = "alias"
 
     def get_queryset(self):
@@ -122,7 +121,7 @@ class RentPaymentDetailView(RetrieveAPIView):
 
 
 class CardPaymentView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenant]
+    permission_classes = [IsTenant]
 
     def post(self, request):
         serializer = CardPaymentRequestSerializer(
@@ -160,7 +159,7 @@ class CardPaymentView(APIView):
 
 
 class DirectDebitSetupView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenant]
+    permission_classes = [IsTenant]
 
     def post(self, request):
         serializer = DirectDebitSetupRequestSerializer(data=request.data)
@@ -189,7 +188,7 @@ class DirectDebitSetupView(APIView):
 
 
 class DirectDebitCompleteView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenant]
+    permission_classes = [IsTenant]
 
     def post(self, request):
         serializer = DirectDebitCompleteRequestSerializer(data=request.data)
@@ -234,7 +233,7 @@ class DirectDebitCompleteView(APIView):
         )
 
 class DirectDebitPaymentView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenant]
+    permission_classes = [IsTenant]
 
     def post(self, request):
         serializer = DirectDebitPaymentRequestSerializer(
@@ -274,7 +273,7 @@ class DirectDebitPaymentView(APIView):
 
 
 class DirectDebitCallbackView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [AllowAny]
 
     def get(self, request):
         redirect_flow_id = request.GET.get("redirect_flow_id")
@@ -282,7 +281,7 @@ class DirectDebitCallbackView(APIView):
 
 
 class RentBalanceSummaryView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsTenant]
+    permission_classes = [IsTenant]
 
     def get(self, request):
         serializer = RentBalanceSummarySerializer(request.user)
@@ -296,7 +295,7 @@ class RentStatementView(APIView):
     api/rent-statements/?period=weekly&year=2026&week=29
     api/rent-statements/?period=custom&start_date=2026-01-01&end_date=2026-03-31
     """
-    permission_classes = [permissions.IsAuthenticated, IsTenant]
+    permission_classes = [IsTenant]
 
     def get(self, request):
         period = request.query_params.get("period", "yearly")
@@ -362,17 +361,14 @@ class WebhookRateThrottle(SimpleRateThrottle):
         return self.cache_format % {"scope": self.scope, "ident": ident}
 
 
-# Statuses that must never be overwritten by a later/out-of-order webhook —
-# once money has actually moved (or been refunded) that fact is final.
 _TERMINAL_STATUSES = {
     RentPaymentStatusChoices.CLEARED,
     RentPaymentStatusChoices.REFUNDED,
 }
 
-
 @method_decorator(csrf_exempt, name="dispatch")
 class StripeWebhookView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [AllowAny]
     throttle_classes = [WebhookRateThrottle]
 
     def post(self, request):
@@ -402,10 +398,6 @@ class StripeWebhookView(APIView):
 
         try:
             with transaction.atomic():
-                # Claim + process inside the same transaction: if processing
-                # raises, the claim rolls back too, so Stripe's retry can
-                # actually succeed later instead of being silently swallowed
-                # as a "duplicate".
                 if not self._claim_event(event["id"]):
                     return Response({"received": True, "duplicate": True}, status=status.HTTP_200_OK)
 
@@ -454,7 +446,7 @@ class StripeWebhookView(APIView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class GoCardlessWebhookView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [AllowAny]
     throttle_classes = [WebhookRateThrottle]
 
     def post(self, request):
@@ -483,9 +475,6 @@ class GoCardlessWebhookView(APIView):
 
             try:
                 with transaction.atomic():
-                    # Claim and process this single event atomically, same
-                    # reasoning as the Stripe view: a mid-processing failure
-                    # must not leave the event permanently marked "seen".
                     if not self._claim_event(event_id):
                         continue
 
@@ -508,9 +497,6 @@ class GoCardlessWebhookView(APIView):
                             )
             except Exception:
                 logger.exception("GoCardless webhook event processing failed", extra={"event_id": event_id})
-                # Continue to the next event rather than failing the whole
-                # batch — this event was not claimed (rollback), so
-                # GoCardless's retry of the whole payload will pick it up again.
                 continue
 
         return Response({"received": True}, status=status.HTTP_200_OK)
@@ -549,3 +535,79 @@ class GoCardlessWebhookView(APIView):
                 "GoCardless webhook: no matching non-terminal RentPayment",
                 extra={"provider_payment_id": provider_payment_id, "new_status": new_status},
             )
+
+
+class TenantPropertyDetailsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        tenant = Tenant.objects.select_related("property").get(id=request.user.id)
+
+        today = date.today()
+        is_active = bool(
+            tenant.is_active
+            and tenant.tenancy_start_date
+            and tenant.tenancy_start_date <= today
+            and (tenant.tenancy_end_date is None or tenant.tenancy_end_date >= today)
+        )
+
+        tenancy_term = None
+        if tenant.tenancy_start_date and tenant.tenancy_end_date:
+            tenancy_term = (
+                f"{tenant.tenancy_start_date:%b %-d, %Y} - "
+                f"{tenant.tenancy_end_date:%b %-d, %Y}"
+            )
+
+        return Response({
+            "property_address": tenant.property.address,
+            "tenancy_term": tenancy_term,
+            "status": "Active" if is_active else "Inactive",
+        })
+
+
+class TenantFinancialOverviewView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        tenant = request.user
+        today = date.today()
+
+        # Last 10 rent payments, used only to compute totals below
+        payments = RentPayment.objects.filter(tenant=tenant).order_by("-due_date")[:10]
+
+        # Outstanding balance = sum of unpaid amounts
+        outstanding_balance = sum(
+            p.amount for p in payments if p.status != "PAID"
+        )
+
+        next_rent_due_date = None
+        upcoming = (
+            RentPayment.objects
+            .filter(tenant=tenant, due_date__gte=today)
+            .exclude(status="PAID")
+            .order_by("due_date")
+            .first()
+        )
+        if upcoming:
+            next_rent_due_date = upcoming.due_date
+        elif tenant.tenancy_start_date:
+            rent_day = tenant.tenancy_start_date.day
+            year, month = today.year, today.month
+            last_day_this_month = calendar.monthrange(year, month)[1]
+            due_this_month = date(year, month, min(rent_day, last_day_this_month))
+
+            if due_this_month >= today:
+                next_rent_due_date = due_this_month
+            else:
+                month += 1
+                if month > 12:
+                    month = 1
+                    year += 1
+                last_day_next_month = calendar.monthrange(year, month)[1]
+                next_rent_due_date = date(year, month, min(rent_day, last_day_next_month))
+
+        return Response({
+            "rent_amount": tenant.rent_amount,
+            "outstanding_balance": outstanding_balance,
+            "next_rent_due_date": next_rent_due_date,
+        })
