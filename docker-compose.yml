@@ -37,7 +37,7 @@ services:
     container_name: landkeeper_redis
     restart: always
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
     healthcheck:
