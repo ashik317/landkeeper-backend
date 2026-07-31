@@ -8,4 +8,5 @@ urlpatterns = [
     path("/support-tickets", include("api.urls.support_tickets")),
     path("/tenant", include("api.urls.tenants")),
     path("/notifications", include("api.urls.notifications")),
+    path("/documents", include("api.urls.documents")),
 ]
