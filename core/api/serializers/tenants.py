@@ -41,6 +41,8 @@ class PaymentMethodSerializer(serializers.ModelSerializer):
 
 
 class RentPaymentSerializer(serializers.ModelSerializer):
+    payment_method = PaymentMethodSerializer(read_only=True)
+
     class Meta:
         model = RentPayment
         fields = [
@@ -74,14 +76,6 @@ class RentPaymentSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        request = self.context.get("request")
-        if request is not None and hasattr(self.fields.get("payment_method"), "queryset"):
-            self.fields["payment_method"].queryset = PaymentMethod.objects.filter(
-                tenant=request.user
-            )
 
 
 class RentBalanceSummarySerializer(serializers.Serializer):
@@ -132,6 +126,11 @@ class DirectDebitCompleteRequestSerializer(serializers.Serializer):
 
 
 class CardPaymentRequestSerializer(serializers.Serializer):
+    _BLOCKED_FOR_NEW_ATTEMPT_STATUSES = (
+        RentPaymentStatusChoices.CLEARED,
+        RentPaymentStatusChoices.PROCESSING,
+    )
+
     rent_payment = serializers.SlugRelatedField(
         slug_field="alias",
         queryset=RentPayment.objects.all(),
@@ -146,9 +145,9 @@ class CardPaymentRequestSerializer(serializers.Serializer):
         if rent_payment.tenant_id != request.user.id:
             raise serializers.ValidationError({"rent_payment": "Not found."})
 
-        if rent_payment.status == RentPaymentStatusChoices.CLEARED:
+        if rent_payment.status in self._BLOCKED_FOR_NEW_ATTEMPT_STATUSES:
             raise serializers.ValidationError(
-                {"rent_payment": "This rent payment is already cleared."}
+                {"rent_payment": "This rent payment is already cleared or being processed."}
             )
 
         if attrs["amount"] != rent_payment.amount:
@@ -159,6 +158,11 @@ class CardPaymentRequestSerializer(serializers.Serializer):
 
 
 class DirectDebitPaymentRequestSerializer(serializers.Serializer):
+    _BLOCKED_FOR_NEW_ATTEMPT_STATUSES = (
+        RentPaymentStatusChoices.CLEARED,
+        RentPaymentStatusChoices.PROCESSING,
+    )
+
     rent_payment = serializers.SlugRelatedField(
         slug_field="alias",
         queryset=RentPayment.objects.all(),
@@ -168,8 +172,10 @@ class DirectDebitPaymentRequestSerializer(serializers.Serializer):
         request = self.context["request"]
         if rent_payment.tenant_id != request.user.id:
             raise serializers.ValidationError("Not found.")
-        if rent_payment.status == RentPaymentStatusChoices.CLEARED:
-            raise serializers.ValidationError("This rent payment is already cleared.")
+        if rent_payment.status in self._BLOCKED_FOR_NEW_ATTEMPT_STATUSES:
+            raise serializers.ValidationError(
+                "This rent payment is already cleared or being processed."
+            )
         return rent_payment
 
     def validate(self, attrs):
