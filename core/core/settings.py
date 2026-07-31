@@ -63,6 +63,7 @@ PROJECT_APPS = [
     "apps.supportticket.apps.SupportticketConfig",
     "apps.tenant.apps.TenantConfig",
     "apps.notification.apps.NotificationConfig",
+    "apps.document.apps.DocumentConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PROJECT_APPS
