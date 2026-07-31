@@ -61,6 +61,10 @@ from apps.tenant.utils import get_statement_date_range
 
 logger = logging.getLogger("apps.tenant.payments")
 
+_TERMINAL_STATUSES = {
+    RentPaymentStatusChoices.CLEARED,
+    RentPaymentStatusChoices.REFUNDED,
+}
 
 class PaymentMethodListCreateView(ListAPIView):
     serializer_class = PaymentMethodSerializer
@@ -128,11 +132,12 @@ class CardPaymentView(APIView):
         )
         serializer.is_valid(raise_exception=True)
         rent_payment = serializer.validated_data["rent_payment"]
+        payment_method_id = serializer.validated_data.get("payment_method_id")
 
         try:
             intent = create_payment_intent(
                 amount=serializer.validated_data["amount"],
-                payment_method_id=serializer.validated_data.get("payment_method_id"),
+                payment_method_id=payment_method_id,
                 idempotency_key=f"card-{rent_payment.alias}",
                 metadata={"rent_payment_alias": str(rent_payment.alias)},
             )
@@ -146,14 +151,62 @@ class CardPaymentView(APIView):
                 {"error": "Payment provider error. Please try again."},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
+        payment_method_obj = self._get_or_create_card_payment_method(
+            tenant=rent_payment.tenant, payment_method_id=payment_method_id
+        )
 
-        rent_payment.provider_payment_id = intent.id
-        rent_payment.status = RentPaymentStatusChoices.PROCESSING
-        rent_payment.save(update_fields=["provider_payment_id", "status"])
+        updated = RentPayment.objects.filter(pk=rent_payment.pk).exclude(
+            status__in=_TERMINAL_STATUSES
+        ).update(
+            provider_payment_id=intent.id,
+            payment_method=payment_method_obj,
+            status=RentPaymentStatusChoices.PROCESSING,
+        )
+
+        if not updated:
+            logger.warning(
+                "CardPaymentView: rent_payment already terminal, skipped status downgrade",
+                extra={"rent_payment_alias": str(rent_payment.alias), "intent_id": intent.id},
+            )
 
         return Response(
             {"client_secret": intent.client_secret, "status": intent.status},
             status=status.HTTP_201_CREATED,
+        )
+
+    @staticmethod
+    def _get_or_create_card_payment_method(tenant, payment_method_id):
+        if not payment_method_id:
+            return None
+
+        existing = PaymentMethod.objects.filter(
+            tenant=tenant,
+            provider="STRIPE",
+            provider_payment_method_id=payment_method_id,
+        ).first()
+        if existing:
+            return existing
+
+        try:
+            stripe_pm = stripe.PaymentMethod.retrieve(payment_method_id)
+        except stripe.error.StripeError:
+            logger.exception(
+                "Failed to fetch Stripe PaymentMethod details",
+                extra={"payment_method_id": payment_method_id},
+            )
+            return None
+
+        card = getattr(stripe_pm, "card", None)
+
+        return PaymentMethod.objects.create(
+            tenant=tenant,
+            provider="STRIPE",
+            method_type="CARD",
+            provider_payment_method_id=payment_method_id,
+            status="ACTIVE",
+            is_default=False,
+            card_last4=getattr(card, "last4", None) if card else None,
+            card_brand=getattr(card, "brand", None) if card else None,
         )
 
 
@@ -260,10 +313,19 @@ class DirectDebitPaymentView(APIView):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        rent_payment.provider_payment_id = payment.id
-        rent_payment.payment_method = payment_method
-        rent_payment.status = RentPaymentStatusChoices.PROCESSING
-        rent_payment.save(update_fields=["provider_payment_id", "payment_method", "status"])
+        updated = RentPayment.objects.filter(pk=rent_payment.pk).exclude(
+            status__in=_TERMINAL_STATUSES
+        ).update(
+            provider_payment_id=payment.id,
+            payment_method=payment_method,
+            status=RentPaymentStatusChoices.PROCESSING,
+        )
+
+        if not updated:
+            logger.warning(
+                "DirectDebitPaymentView: rent_payment already terminal, skipped status downgrade",
+                extra={"rent_payment_alias": str(rent_payment.alias), "payment_id": payment.id},
+            )
 
         return Response(
             {"provider_payment_id": payment.id, "status": payment.status},
@@ -359,11 +421,6 @@ class WebhookRateThrottle(SimpleRateThrottle):
         ident = self.get_ident(request)
         return self.cache_format % {"scope": self.scope, "ident": ident}
 
-
-_TERMINAL_STATUSES = {
-    RentPaymentStatusChoices.CLEARED,
-    RentPaymentStatusChoices.REFUNDED,
-}
 
 @method_decorator(csrf_exempt, name="dispatch")
 class StripeWebhookView(APIView):
@@ -598,14 +655,14 @@ class FinancialOverviewListView(APIView):
             payments = RentPayment.objects.filter(tenant=tenant).order_by("-due_date")[:10]
 
             outstanding_balance = sum(
-                p.amount for p in payments if p.status != "PAID"
+                p.amount for p in payments if p.status not in _TERMINAL_STATUSES
             )
 
             next_rent_due_date = None
             upcoming = (
                 RentPayment.objects
                 .filter(tenant=tenant, due_date__gte=today)
-                .exclude(status="PAID")
+                .exclude(status__in=_TERMINAL_STATUSES)
                 .order_by("due_date")
                 .first()
             )
