@@ -134,6 +134,13 @@ class CardPaymentView(APIView):
         rent_payment = serializer.validated_data["rent_payment"]
         payment_method_id = serializer.validated_data.get("payment_method_id")
 
+        # Fail fast with a clear error instead of letting Stripe reject silently
+        if not payment_method_id:
+            return Response(
+                {"error": "payment_method_id is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         try:
             intent = create_payment_intent(
                 amount=serializer.validated_data["amount"],
@@ -142,15 +149,34 @@ class CardPaymentView(APIView):
                 metadata={"rent_payment_alias": str(rent_payment.alias)},
             )
         except stripe.error.CardError as e:
+            logger.warning(
+                "CardPaymentView: card declined",
+                extra={
+                    "rent_payment_alias": str(rent_payment.alias),
+                    "stripe_error_code": e.code,
+                    "stripe_error_message": str(e.user_message or e),
+                },
+            )
+            self._mark_failed(rent_payment, e.user_message or "Your card was declined.")
             return Response(
                 {"error": e.user_message or "Your card was declined."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        except stripe.error.StripeError:
+        except stripe.error.StripeError as e:
+            logger.exception(
+                "CardPaymentView: create_payment_intent failed",
+                extra={
+                    "rent_payment_alias": str(rent_payment.alias),
+                    "payment_method_id": payment_method_id,
+                    "stripe_error_type": type(e).__name__,
+                },
+            )
+            self._mark_failed(rent_payment, "Payment provider error. Please try again.")
             return Response(
                 {"error": "Payment provider error. Please try again."},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
+
         payment_method_obj = self._get_or_create_card_payment_method(
             tenant=rent_payment.tenant, payment_method_id=payment_method_id
         )
@@ -172,6 +198,15 @@ class CardPaymentView(APIView):
         return Response(
             {"client_secret": intent.client_secret, "status": intent.status},
             status=status.HTTP_201_CREATED,
+        )
+
+    @staticmethod
+    def _mark_failed(rent_payment, failure_reason):
+        RentPayment.objects.filter(pk=rent_payment.pk).exclude(
+            status__in=_TERMINAL_STATUSES
+        ).update(
+            status=RentPaymentStatusChoices.FAILED,
+            failure_reason=failure_reason,
         )
 
     @staticmethod
