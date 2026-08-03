@@ -80,10 +80,9 @@ class RentPayment(CreatedAtUpdatedAtBaseModel):
     failure_reason = models.TextField(blank=True, null=True)
 
     class Meta:
-        ordering = ["-due_date"]
+        ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["tenant", "status"]),
-            models.Index(fields=["tenant", "due_date"]),
         ]
 
     def save(self, *args, **kwargs):
