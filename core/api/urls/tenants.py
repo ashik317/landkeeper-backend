@@ -1,5 +1,4 @@
 from django.urls import path
-from rest_framework.views import APIView
 
 from api.views.tenants import (
     PaymentMethodListCreateView,
@@ -17,6 +16,7 @@ from api.views.tenants import (
     GoCardlessWebhookView,
     FinancialOverviewListView,
     PropertyTenancyListView,
+    PaymentHistoryView,
 )
 
 urlpatterns = [
@@ -74,6 +74,11 @@ urlpatterns = [
         "/rent-payments/pay-with-direct-debit",
         DirectDebitPaymentView.as_view(),
         name="pay-with-direct-debit"
+    ),
+    path(
+    "/rent-payments/payment-history",
+        PaymentHistoryView.as_view(),
+        name="payment-history"
     ),
     path(
         "/stripe",
