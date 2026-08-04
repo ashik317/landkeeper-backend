@@ -1,10 +1,13 @@
+import logging
+
 from django.db.models import Sum
 from django.utils import timezone
 from rest_framework import serializers
 
+from apps.property.models import Tenant
 from apps.tenant.enums import RentPaymentStatusChoices, PaymentProviderChoices
 from apps.tenant.models import PaymentMethod, RentPayment
-import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -80,6 +83,59 @@ class RentPaymentSerializer(serializers.ModelSerializer):
         ]
 
 
+class TenantSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Tenant
+        fields = ["id", "first_name", "last_name", "email"]
+
+
+class LandlordRentPaymentCreateSerializer(serializers.ModelSerializer):
+    tenant = serializers.SlugRelatedField(
+        slug_field="alias",
+        queryset=Tenant.objects.all(),
+        error_messages={
+            "does_not_exist": "No tenant found with this identifier.",
+            "invalid": "Invalid tenant identifier format.",
+        },
+    )
+
+    class Meta:
+        model = RentPayment
+        fields = ["alias", "tenant", "amount", "due_date"]
+        read_only_fields = ["alias"]
+
+    def validate_tenant(self, tenant):
+        request = self.context["request"]
+
+        landlord_org_ids = list(
+            request.user.organisation_users.values_list("organisation_id", flat=True)
+        )
+
+        if tenant.property.organisation_id not in landlord_org_ids:
+            raise serializers.ValidationError("Not found.")
+
+        return tenant
+
+    def validate(self, attrs):
+        tenant = attrs["tenant"]
+        due_date = attrs["due_date"]
+
+        exists = RentPayment.objects.filter(
+            tenant=tenant, due_date=due_date
+        ).exclude(status=RentPaymentStatusChoices.FAILED).exists()
+
+        if exists:
+            raise serializers.ValidationError(
+                {"due_date": "A rent payment for this tenant and due date already exists."}
+            )
+        return attrs
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["tenant"] = TenantSerializer(instance.tenant).data
+        return data
+
+
 class RentBalanceSummarySerializer(serializers.Serializer):
     current_rent_amount = serializers.SerializerMethodField()
     outstanding_balance = serializers.SerializerMethodField()
@@ -140,11 +196,12 @@ class CardPaymentRequestSerializer(serializers.Serializer):
     def validate(self, attrs):
         request = self.context["request"]
         due_date = attrs["due_date"]
+        amount = attrs["amount"]
 
         rent_payments = RentPayment.objects.filter(
             tenant_id=request.user.id,
             due_date=due_date,
-        ).order_by("-created_at")
+        ).exclude(status__in=self._BLOCKED_FOR_NEW_ATTEMPT_STATUSES).order_by("-created_at")
 
         rent_payment = rent_payments.first()
 
@@ -159,12 +216,7 @@ class CardPaymentRequestSerializer(serializers.Serializer):
                 extra={"tenant_id": request.user.id, "due_date": str(due_date)},
             )
 
-        if rent_payment.status in self._BLOCKED_FOR_NEW_ATTEMPT_STATUSES:
-            raise serializers.ValidationError(
-                {"rent_payment": "This rent payment is already cleared or being processed."}
-            )
-
-        if attrs["amount"] != rent_payment.amount:
+        if amount != rent_payment.amount:
             raise serializers.ValidationError(
                 {"amount": f"Amount must match the rent payment amount of £{rent_payment.amount}."}
             )
@@ -179,23 +231,31 @@ class DirectDebitPaymentRequestSerializer(serializers.Serializer):
         RentPaymentStatusChoices.PROCESSING,
     )
 
-    rent_payment = serializers.SlugRelatedField(
-        slug_field="alias",
-        queryset=RentPayment.objects.all(),
-    )
-
-    def validate_rent_payment(self, rent_payment):
-        request = self.context["request"]
-        if rent_payment.tenant_id != request.user.id:
-            raise serializers.ValidationError("Not found.")
-        if rent_payment.status in self._BLOCKED_FOR_NEW_ATTEMPT_STATUSES:
-            raise serializers.ValidationError(
-                "This rent payment is already cleared or being processed."
-            )
-        return rent_payment
+    due_date = serializers.DateField()
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0.01)
 
     def validate(self, attrs):
         request = self.context["request"]
+        due_date = attrs["due_date"]
+        amount = attrs["amount"]
+
+        rent_payment = (
+            RentPayment.objects.filter(tenant_id=request.user.id, due_date=due_date)
+            .exclude(status__in=self._BLOCKED_FOR_NEW_ATTEMPT_STATUSES)
+            .order_by("-created_at")
+            .first()
+        )
+
+        if rent_payment is None:
+            raise serializers.ValidationError(
+                {"due_date": "No rent payment found for this due date."}
+            )
+
+        if amount != rent_payment.amount:
+            raise serializers.ValidationError(
+                {"amount": f"Amount must match the rent payment amount of £{rent_payment.amount}."}
+            )
+
         payment_method = PaymentMethod.objects.filter(
             tenant=request.user,
             provider=PaymentProviderChoices.GOCARDLESS,
@@ -206,5 +266,7 @@ class DirectDebitPaymentRequestSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 "No active direct debit mandate found. Please set up direct debit first."
             )
+
+        attrs["rent_payment"] = rent_payment
         attrs["payment_method"] = payment_method
         return attrs

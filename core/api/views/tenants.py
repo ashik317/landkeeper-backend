@@ -45,7 +45,9 @@ from api.serializers.tenants import (
     DirectDebitSetupRequestSerializer,
     DirectDebitCompleteRequestSerializer,
     DirectDebitPaymentRequestSerializer,
+    LandlordRentPaymentCreateSerializer,
 )
+from apps.authentication.permission import IsLandlord
 from apps.property.models import Tenant
 from apps.tenant.enums import RentPaymentStatusChoices
 from apps.tenant.gocardless_client import (
@@ -95,8 +97,15 @@ class PaymentMethodDetailView(RetrieveUpdateDestroyAPIView):
 
 
 class RentPaymentListCreateView(ListCreateAPIView):
-    serializer_class = RentPaymentSerializer
-    permission_classes = [IsTenant]
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [IsLandlord()]
+        return [IsTenant()]
+
+    def get_serializer_class(self):
+        if self.request.method == "POST":
+            return LandlordRentPaymentCreateSerializer
+        return RentPaymentSerializer
 
     def get_queryset(self):
         return RentPayment.objects.filter(tenant=self.request.user)
@@ -107,10 +116,12 @@ class RentPaymentListCreateView(ListCreateAPIView):
         return context
 
     def perform_create(self, serializer):
+        tenant = serializer.validated_data["tenant"]
         serializer.save(
-            tenant=self.request.user,
-            property=self.request.user.property,
-            organisation=self.request.user.organisation,
+            tenant=tenant,
+            property=tenant.property,
+            organisation=tenant.property.organisation,
+            status=RentPaymentStatusChoices.PENDING,
         )
 
 
@@ -134,7 +145,6 @@ class CardPaymentView(APIView):
         rent_payment = serializer.validated_data["rent_payment"]
         payment_method_id = serializer.validated_data.get("payment_method_id")
 
-        # Fail fast with a clear error instead of letting Stripe reject silently
         if not payment_method_id:
             return Response(
                 {"error": "payment_method_id is required."},
@@ -727,3 +737,15 @@ class FinancialOverviewListView(APIView):
             })
 
         return Response(results)
+
+
+class PaymentHistoryView(ListAPIView):
+    serializer_class = RentPaymentSerializer
+    permission_classes = [IsTenant]
+
+    def get_queryset(self):
+        return RentPayment.objects.filter(
+            tenant=self.request.user
+        ).exclude(
+            payment_method__isnull=True
+        ).order_by("-updated_at")
