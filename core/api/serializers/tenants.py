@@ -6,7 +6,7 @@ from rest_framework import serializers
 
 from apps.property.models import Tenant
 from apps.tenant.enums import RentPaymentStatusChoices, PaymentProviderChoices
-from apps.tenant.models import PaymentMethod, RentPayment
+from apps.tenant.models import PaymentMethod, RentPayment, CardPayment
 
 logger = logging.getLogger(__name__)
 
@@ -183,48 +183,6 @@ class DirectDebitCompleteRequestSerializer(serializers.Serializer):
     session_token = serializers.CharField()
 
 
-class CardPaymentRequestSerializer(serializers.Serializer):
-    _BLOCKED_FOR_NEW_ATTEMPT_STATUSES = (
-        RentPaymentStatusChoices.CLEARED,
-        RentPaymentStatusChoices.PROCESSING,
-    )
-
-    due_date = serializers.DateField()
-    amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0.01)
-    payment_method_id = serializers.CharField(required=False, allow_blank=True)
-
-    def validate(self, attrs):
-        request = self.context["request"]
-        due_date = attrs["due_date"]
-        amount = attrs["amount"]
-
-        rent_payments = RentPayment.objects.filter(
-            tenant_id=request.user.id,
-            due_date=due_date,
-        ).exclude(status__in=self._BLOCKED_FOR_NEW_ATTEMPT_STATUSES).order_by("-created_at")
-
-        rent_payment = rent_payments.first()
-
-        if rent_payment is None:
-            raise serializers.ValidationError(
-                {"due_date": "No rent payment found for this due date."}
-            )
-
-        if rent_payments.count() > 1:
-            logger.warning(
-                "CardPaymentRequestSerializer: multiple rent payments found for due_date",
-                extra={"tenant_id": request.user.id, "due_date": str(due_date)},
-            )
-
-        if amount != rent_payment.amount:
-            raise serializers.ValidationError(
-                {"amount": f"Amount must match the rent payment amount of £{rent_payment.amount}."}
-            )
-
-        attrs["rent_payment"] = rent_payment
-        return attrs
-
-
 class DirectDebitPaymentRequestSerializer(serializers.Serializer):
     _BLOCKED_FOR_NEW_ATTEMPT_STATUSES = (
         RentPaymentStatusChoices.CLEARED,
@@ -270,3 +228,28 @@ class DirectDebitPaymentRequestSerializer(serializers.Serializer):
         attrs["rent_payment"] = rent_payment
         attrs["payment_method"] = payment_method
         return attrs
+
+class CardPaymentRequestSerializer(serializers.Serializer):
+    due_date = serializers.DateField()
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0.01)
+    payment_method_id = serializers.CharField(required=False, allow_blank=True)
+
+
+
+class CardPaymentSerializer(serializers.ModelSerializer):
+    payment_method = PaymentMethodSerializer(read_only=True)
+
+    class Meta:
+        model = CardPayment
+        fields = [
+            "alias",
+            "payment_method",
+            "amount",
+            "due_date",
+            "status",
+            "provider_payment_id",
+            "failure_reason",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields

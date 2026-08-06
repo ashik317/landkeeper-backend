@@ -45,18 +45,19 @@ from api.serializers.tenants import (
     DirectDebitSetupRequestSerializer,
     DirectDebitCompleteRequestSerializer,
     DirectDebitPaymentRequestSerializer,
-    LandlordRentPaymentCreateSerializer,
+    LandlordRentPaymentCreateSerializer, CardPaymentSerializer,
 )
 from apps.authentication.permission import IsLandlord
 from apps.property.models import Tenant
-from apps.tenant.enums import RentPaymentStatusChoices
+from apps.tenant.enums import RentPaymentStatusChoices, PaymentProviderChoices, PaymentMethodTypeChoices, \
+    PaymentMethodStatusChoices
 from apps.tenant.gocardless_client import (
     create_redirect_flow,
     complete_redirect_flow,
     create_payment as create_gocardless_payment,
     cancel_mandate,
 )
-from apps.tenant.models import PaymentMethod, RentPayment, ProcessedWebhookEvent
+from apps.tenant.models import PaymentMethod, RentPayment, ProcessedWebhookEvent, CardPayment
 from apps.tenant.permission import IsTenant
 from apps.tenant.stripe_client import create_payment_intent
 from apps.tenant.utils import get_statement_date_range
@@ -142,7 +143,8 @@ class CardPaymentView(APIView):
             data=request.data, context={"request": request}
         )
         serializer.is_valid(raise_exception=True)
-        rent_payment = serializer.validated_data["rent_payment"]
+        due_date = serializer.validated_data["due_date"]
+        amount = serializer.validated_data["amount"]
         payment_method_id = serializer.validated_data.get("payment_method_id")
 
         if not payment_method_id:
@@ -151,23 +153,32 @@ class CardPaymentView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        alias = uuid.uuid4()
         try:
             intent = create_payment_intent(
-                amount=serializer.validated_data["amount"],
+                amount=amount,
                 payment_method_id=payment_method_id,
-                idempotency_key=f"card-{rent_payment.alias}",
-                metadata={"rent_payment_alias": str(rent_payment.alias)},
+                idempotency_key=f"card-{alias}",
+                metadata={"tenant_id": str(request.user.id), "due_date": str(due_date)},
             )
         except stripe.error.CardError as e:
             logger.warning(
                 "CardPaymentView: card declined",
                 extra={
-                    "rent_payment_alias": str(rent_payment.alias),
+                    "tenant_id": request.user.id,
+                    "due_date": str(due_date),
                     "stripe_error_code": e.code,
                     "stripe_error_message": str(e.user_message or e),
                 },
             )
-            self._mark_failed(rent_payment, e.user_message or "Your card was declined.")
+            CardPayment.objects.create(
+                alias=alias,
+                tenant=request.user,
+                due_date=due_date,
+                amount=amount,
+                status=RentPaymentStatusChoices.FAILED,
+                failure_reason=e.user_message or "Your card was declined.",
+            )
             return Response(
                 {"error": e.user_message or "Your card was declined."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -176,47 +187,42 @@ class CardPaymentView(APIView):
             logger.exception(
                 "CardPaymentView: create_payment_intent failed",
                 extra={
-                    "rent_payment_alias": str(rent_payment.alias),
+                    "tenant_id": request.user.id,
+                    "due_date": str(due_date),
                     "payment_method_id": payment_method_id,
                     "stripe_error_type": type(e).__name__,
                 },
             )
-            self._mark_failed(rent_payment, "Payment provider error. Please try again.")
+            CardPayment.objects.create(
+                alias=alias,
+                tenant=request.user,
+                due_date=due_date,
+                amount=amount,
+                status=RentPaymentStatusChoices.FAILED,
+                failure_reason="Payment provider error. Please try again.",
+            )
             return Response(
                 {"error": "Payment provider error. Please try again."},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
         payment_method_obj = self._get_or_create_card_payment_method(
-            tenant=rent_payment.tenant, payment_method_id=payment_method_id
+            tenant=request.user, payment_method_id=payment_method_id
         )
 
-        updated = RentPayment.objects.filter(pk=rent_payment.pk).exclude(
-            status__in=_TERMINAL_STATUSES
-        ).update(
+        CardPayment.objects.create(
+            alias=alias,
+            tenant=request.user,
+            due_date=due_date,
+            amount=amount,
             provider_payment_id=intent.id,
             payment_method=payment_method_obj,
             status=RentPaymentStatusChoices.PROCESSING,
         )
 
-        if not updated:
-            logger.warning(
-                "CardPaymentView: rent_payment already terminal, skipped status downgrade",
-                extra={"rent_payment_alias": str(rent_payment.alias), "intent_id": intent.id},
-            )
-
         return Response(
             {"client_secret": intent.client_secret, "status": intent.status},
             status=status.HTTP_201_CREATED,
-        )
-
-    @staticmethod
-    def _mark_failed(rent_payment, failure_reason):
-        RentPayment.objects.filter(pk=rent_payment.pk).exclude(
-            status__in=_TERMINAL_STATUSES
-        ).update(
-            status=RentPaymentStatusChoices.FAILED,
-            failure_reason=failure_reason,
         )
 
     @staticmethod
@@ -226,7 +232,7 @@ class CardPaymentView(APIView):
 
         existing = PaymentMethod.objects.filter(
             tenant=tenant,
-            provider="STRIPE",
+            provider=PaymentProviderChoices.STRIPE,
             provider_payment_method_id=payment_method_id,
         ).first()
         if existing:
@@ -245,10 +251,10 @@ class CardPaymentView(APIView):
 
         return PaymentMethod.objects.create(
             tenant=tenant,
-            provider="STRIPE",
-            method_type="CARD",
+            provider=PaymentProviderChoices.STRIPE,
+            method_type=PaymentMethodTypeChoices.CARD,
             provider_payment_method_id=payment_method_id,
-            status="ACTIVE",
+            status=PaymentMethodStatusChoices.ACTIVE,
             is_default=False,
             card_last4=getattr(card, "last4", None) if card else None,
             card_brand=getattr(card, "brand", None) if card else None,
@@ -504,13 +510,16 @@ class StripeWebhookView(APIView):
 
                 if event_type == "payment_intent.succeeded":
                     self._mark_payment(data_object["id"], RentPaymentStatusChoices.CLEARED)
+                    self._mark_card_payment(data_object["id"], RentPaymentStatusChoices.CLEARED)
                 elif event_type == "payment_intent.payment_failed":
+                    reason = data_object.get("last_payment_error", {}).get(
+                        "message", "Payment failed"
+                    )
                     self._mark_payment(
-                        data_object["id"],
-                        RentPaymentStatusChoices.FAILED,
-                        failure_reason=data_object.get("last_payment_error", {}).get(
-                            "message", "Payment failed"
-                        ),
+                        data_object["id"], RentPaymentStatusChoices.FAILED, failure_reason=reason
+                    )
+                    self._mark_card_payment(
+                        data_object["id"], RentPaymentStatusChoices.FAILED, failure_reason=reason
                     )
         except Exception:
             logger.exception("Stripe webhook processing failed", extra={"event_id": event.get("id")})
@@ -542,6 +551,45 @@ class StripeWebhookView(APIView):
             logger.warning(
                 "Stripe webhook: no matching non-terminal RentPayment",
                 extra={"provider_payment_id": provider_payment_id, "new_status": new_status},
+            )
+
+    @staticmethod
+    def _mark_card_payment(provider_payment_id, new_status, failure_reason=None):
+        update_fields = {"status": new_status}
+        if failure_reason:
+            update_fields["failure_reason"] = failure_reason
+
+        card_payment = CardPayment.objects.filter(
+            provider_payment_id=provider_payment_id
+        ).exclude(status__in=_TERMINAL_STATUSES).first()
+
+        if not card_payment:
+            logger.warning(
+                "Stripe webhook: no matching non-terminal CardPayment",
+                extra={"provider_payment_id": provider_payment_id, "new_status": new_status},
+            )
+            return
+
+        CardPayment.objects.filter(pk=card_payment.pk).update(**update_fields)
+
+        if new_status == RentPaymentStatusChoices.CLEARED:
+            rent_update_fields = {**update_fields, "paid_date": timezone.localdate()}
+        else:
+            rent_update_fields = update_fields
+
+        rent_updated = RentPayment.objects.filter(
+            tenant_id=card_payment.tenant_id,
+            due_date=card_payment.due_date,
+        ).exclude(status__in=_TERMINAL_STATUSES).update(**rent_update_fields)
+
+        if not rent_updated:
+            logger.warning(
+                "Stripe webhook: no matching non-terminal RentPayment for card payment",
+                extra={
+                    "provider_payment_id": provider_payment_id,
+                    "tenant_id": card_payment.tenant_id,
+                    "due_date": str(card_payment.due_date),
+                },
             )
 
 
@@ -740,12 +788,10 @@ class FinancialOverviewListView(APIView):
 
 
 class PaymentHistoryView(ListAPIView):
-    serializer_class = RentPaymentSerializer
+    serializer_class = CardPaymentSerializer
     permission_classes = [IsTenant]
 
     def get_queryset(self):
-        return RentPayment.objects.filter(
+        return CardPayment.objects.filter(
             tenant=self.request.user
-        ).exclude(
-            payment_method__isnull=True
-        ).order_by("-updated_at")
+        ).select_related("payment_method").order_by("-created_at")
