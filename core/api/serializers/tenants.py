@@ -144,22 +144,17 @@ class RentBalanceSummarySerializer(serializers.Serializer):
     next_due_date = serializers.SerializerMethodField()
 
     def get_current_rent_amount(self, tenant):
-        latest_payment = (
-            RentPayment.objects.filter(tenant=tenant)
-            .order_by("-due_date")
-            .first()
-        )
-        return latest_payment.amount if latest_payment else 0
+        return tenant.rent_amount or 0
 
     def get_outstanding_balance(self, tenant):
         rent_total = (
-                RentPayment.objects.filter(tenant=tenant)
-                .exclude(status__in=[
-                    RentPaymentStatusChoices.CLEARED,
-                    RentPaymentStatusChoices.REFUNDED,
-                    RentPaymentStatusChoices.FAILED,
-                ])
-                .aggregate(total=Sum("amount"))["total"] or 0
+            RentPayment.objects.filter(tenant=tenant)
+            .exclude(status__in=[
+                RentPaymentStatusChoices.CLEARED,
+                RentPaymentStatusChoices.REFUNDED,
+                RentPaymentStatusChoices.FAILED,
+            ])
+            .aggregate(total=Sum("amount"))["total"] or 0
         )
 
         existing_due_dates = set(
@@ -167,14 +162,14 @@ class RentBalanceSummarySerializer(serializers.Serializer):
         )
 
         orphan_card_total = (
-                CardPayment.objects.filter(tenant=tenant)
-                .exclude(due_date__in=existing_due_dates)
-                .exclude(status__in=[
-                    RentPaymentStatusChoices.CLEARED,
-                    RentPaymentStatusChoices.REFUNDED,
-                    RentPaymentStatusChoices.FAILED,
-                ])
-                .aggregate(total=Sum("amount"))["total"] or 0
+            CardPayment.objects.filter(tenant=tenant)
+            .exclude(due_date__in=existing_due_dates)
+            .exclude(status__in=[
+                RentPaymentStatusChoices.CLEARED,
+                RentPaymentStatusChoices.REFUNDED,
+                RentPaymentStatusChoices.FAILED,
+            ])
+            .aggregate(total=Sum("amount"))["total"] or 0
         )
 
         return rent_total + orphan_card_total
@@ -182,7 +177,10 @@ class RentBalanceSummarySerializer(serializers.Serializer):
     def get_next_due_date(self, tenant):
         today = timezone.localdate()
 
-        # 1. If there's already an unpaid RentPayment row on/after today, use it.
+        # Tenancy already ended — no next due date.
+        if tenant.tenancy_end_date and tenant.tenancy_end_date < today:
+            return None
+
         next_payment = (
             RentPayment.objects.filter(tenant=tenant, due_date__gte=today)
             .exclude(status=RentPaymentStatusChoices.CLEARED)
@@ -192,23 +190,34 @@ class RentBalanceSummarySerializer(serializers.Serializer):
         if next_payment:
             return next_payment.due_date
 
-        if not tenant.tenancy_start_date:
+        last_payment = (
+            RentPayment.objects.filter(tenant=tenant)
+            .order_by("-due_date")
+            .first()
+        )
+
+        if last_payment:
+            rent_day = last_payment.due_date.day
+            year, month = last_payment.due_date.year, last_payment.due_date.month
+        elif tenant.tenancy_start_date:
+            rent_day = tenant.tenancy_start_date.day
+            year, month = today.year, today.month
+        else:
             return None
 
-        rent_day = tenant.tenancy_start_date.day
-        year, month = today.year, today.month
-        last_day_this_month = calendar.monthrange(year, month)[1]
-        due_this_month = date(year, month, min(rent_day, last_day_this_month))
+        next_date = date(year, month, min(rent_day, calendar.monthrange(year, month)[1]))
+        while next_date <= today:
+            month += 1
+            if month > 12:
+                month = 1
+                year += 1
+            last_day = calendar.monthrange(year, month)[1]
+            next_date = date(year, month, min(rent_day, last_day))
 
-        if due_this_month >= today:
-            return due_this_month
+        if tenant.tenancy_end_date and next_date > tenant.tenancy_end_date:
+            return None
 
-        month += 1
-        if month > 12:
-            month = 1
-            year += 1
-        last_day_next_month = calendar.monthrange(year, month)[1]
-        return date(year, month, min(rent_day, last_day_next_month))
+        return next_date
 
 
 class DirectDebitSetupRequestSerializer(serializers.Serializer):
