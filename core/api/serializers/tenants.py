@@ -1,4 +1,6 @@
 import logging
+import calendar
+from datetime import date
 
 from django.db.models import Sum
 from django.utils import timezone
@@ -150,28 +152,63 @@ class RentBalanceSummarySerializer(serializers.Serializer):
         return latest_payment.amount if latest_payment else 0
 
     def get_outstanding_balance(self, tenant):
-        total = (
-            RentPayment.objects.filter(tenant=tenant)
-            .exclude(
-                status__in=[
+        rent_total = (
+                RentPayment.objects.filter(tenant=tenant)
+                .exclude(status__in=[
                     RentPaymentStatusChoices.CLEARED,
                     RentPaymentStatusChoices.REFUNDED,
-                ]
-            )
-            .aggregate(total=Sum("amount"))["total"]
+                    RentPaymentStatusChoices.FAILED,
+                ])
+                .aggregate(total=Sum("amount"))["total"] or 0
         )
-        return total or 0
+
+        existing_due_dates = set(
+            RentPayment.objects.filter(tenant=tenant).values_list("due_date", flat=True)
+        )
+
+        orphan_card_total = (
+                CardPayment.objects.filter(tenant=tenant)
+                .exclude(due_date__in=existing_due_dates)
+                .exclude(status__in=[
+                    RentPaymentStatusChoices.CLEARED,
+                    RentPaymentStatusChoices.REFUNDED,
+                    RentPaymentStatusChoices.FAILED,
+                ])
+                .aggregate(total=Sum("amount"))["total"] or 0
+        )
+
+        return rent_total + orphan_card_total
 
     def get_next_due_date(self, tenant):
+        today = timezone.localdate()
+
+        # 1. If there's already an unpaid RentPayment row on/after today, use it.
         next_payment = (
-            RentPayment.objects.filter(
-                tenant=tenant, due_date__gte=timezone.localdate()
-            )
+            RentPayment.objects.filter(tenant=tenant, due_date__gte=today)
             .exclude(status=RentPaymentStatusChoices.CLEARED)
             .order_by("due_date")
             .first()
         )
-        return next_payment.due_date if next_payment else None
+        if next_payment:
+            return next_payment.due_date
+
+        if not tenant.tenancy_start_date:
+            return None
+
+        rent_day = tenant.tenancy_start_date.day
+        year, month = today.year, today.month
+        last_day_this_month = calendar.monthrange(year, month)[1]
+        due_this_month = date(year, month, min(rent_day, last_day_this_month))
+
+        if due_this_month >= today:
+            return due_this_month
+
+        month += 1
+        if month > 12:
+            month = 1
+            year += 1
+        last_day_next_month = calendar.monthrange(year, month)[1]
+        return date(year, month, min(rent_day, last_day_next_month))
 
 
 class DirectDebitSetupRequestSerializer(serializers.Serializer):

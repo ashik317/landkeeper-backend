@@ -418,16 +418,56 @@ class RentStatementView(APIView):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         tenant = request.user
-        payments = RentPayment.objects.filter(
-            tenant=tenant, due_date__gte=start, due_date__lte=end
-        ).order_by("due_date")
 
-        buffer = self.build_rent_statement_pdf(tenant, payments, period_label=label)
+        rent_payments = RentPayment.objects.filter(
+            tenant=tenant, due_date__gte=start, due_date__lte=end
+        ).select_related("payment_method")
+        card_payments = CardPayment.objects.filter(
+            tenant=tenant, due_date__gte=start, due_date__lte=end
+        ).select_related("payment_method")
+
+        rows = self._build_rows(rent_payments, card_payments)
+
+        buffer = self.build_rent_statement_pdf(tenant, rows, period_label=label)
         filename = f"rent_statement_{period}_{start}_{end}.pdf"
         return FileResponse(buffer, as_attachment=True, filename=filename)
 
     @staticmethod
-    def build_rent_statement_pdf(tenant, payments, period_label):
+    def _payment_type_label(payment_method, fallback):
+        if payment_method is None:
+            return fallback
+        if payment_method.provider == PaymentProviderChoices.GOCARDLESS:
+            return "GoCardless"
+        if payment_method.provider == PaymentProviderChoices.STRIPE:
+            return "Card"
+        return payment_method.get_provider_display()
+
+    @classmethod
+    def _build_rows(cls, rent_payments, card_payments):
+        """Merge RentPayment and CardPayment records into a single, date-sorted list of row dicts."""
+        rows = []
+
+        for p in rent_payments:
+            rows.append({
+                "date": p.paid_date or p.due_date,
+                "type": cls._payment_type_label(p.payment_method, "Rent"),
+                "amount": p.amount,
+                "status": p.get_status_display(),
+            })
+
+        for c in card_payments:
+            rows.append({
+                "date": c.due_date,
+                "type": cls._payment_type_label(c.payment_method, "Card"),
+                "amount": c.amount,
+                "status": c.get_status_display(),
+            })
+
+        rows.sort(key=lambda r: r["date"])
+        return rows
+
+    @staticmethod
+    def build_rent_statement_pdf(tenant, rows, period_label):
         buffer = BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=20 * mm, bottomMargin=20 * mm)
         styles = getSampleStyleSheet()
@@ -437,20 +477,20 @@ class RentStatementView(APIView):
         elements.append(Paragraph(f"Tenant: {tenant}", styles["Normal"]))
         elements.append(Spacer(1, 12))
 
-        data = [["Date", "Reference", "Amount", "Status"]]
+        data = [["Date", "Type", "Amount", "Status"]]
         total = 0
-        for p in payments:
+        for r in rows:
             data.append([
-                p.paid_date.strftime("%d %b %Y") if p.paid_date else p.due_date.strftime("%d %b %Y"),
-                p.reference,
-                f"£{p.amount:,.2f}",
-                p.get_status_display(),
+                r["date"].strftime("%d %b %Y"),
+                r["type"],
+                f"£{r['amount']:,.2f}",
+                r["status"],
             ])
-            total += p.amount
+            total += r["amount"]
 
         data.append(["", "", f"Total: £{total:,.2f}", ""])
 
-        table = Table(data, colWidths=[80, 160, 100, 100])
+        table = Table(data, colWidths=[100, 80, 120, 120])
         table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f0f0f0")),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
@@ -787,11 +827,49 @@ class FinancialOverviewListView(APIView):
         return Response(results)
 
 
-class PaymentHistoryView(ListAPIView):
-    serializer_class = CardPaymentSerializer
+class PaymentHistoryView(APIView):
     permission_classes = [IsTenant]
 
-    def get_queryset(self):
-        return CardPayment.objects.filter(
-            tenant=self.request.user
-        ).select_related("payment_method").order_by("-created_at")
+    def get(self, request):
+        tenant = request.user
+        card_payments = CardPayment.objects.filter(
+            tenant=tenant
+        ).select_related("payment_method")
+
+        gocardless_payments = RentPayment.objects.filter(
+            tenant=tenant,
+            payment_method__provider=PaymentProviderChoices.GOCARDLESS,
+        ).select_related("payment_method")
+
+        history = self._build_history(card_payments, gocardless_payments)
+        history.sort(key=lambda r: r["created_at"], reverse=True)
+        return Response(history)
+
+    @staticmethod
+    def _build_history(card_payments, gocardless_payments):
+        rows = []
+        for c in card_payments:
+            rows.append({
+                "alias": c.alias,
+                "payment_method": PaymentMethodSerializer(c.payment_method).data if c.payment_method else None,
+                "provider_payment_id": c.provider_payment_id,
+                "amount": c.amount,
+                "due_date": c.due_date,
+                "status": c.get_status_display(),
+                "failure_reason": c.failure_reason,
+                "created_at": c.created_at,
+                "updated_at": c.updated_at,
+            })
+        for p in gocardless_payments:
+            rows.append({
+                "alias": p.alias,
+                "payment_method": PaymentMethodSerializer(p.payment_method).data if p.payment_method else None,
+                "provider_payment_id": p.provider_payment_id,
+                "amount": p.amount,
+                "due_date": p.due_date,
+                "status": p.get_status_display(),
+                "failure_reason": p.failure_reason,
+                "created_at": p.created_at,
+                "updated_at": p.updated_at,
+            })
+        return rows
