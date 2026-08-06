@@ -32,6 +32,7 @@ from rest_framework.generics import (
     ListAPIView,
     RetrieveAPIView,
 )
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
@@ -843,7 +844,10 @@ class PaymentHistoryView(APIView):
 
         history = self._build_history(card_payments, gocardless_payments)
         history.sort(key=lambda r: r["created_at"], reverse=True)
-        return Response(history)
+
+        paginator = PageNumberPagination()
+        page = paginator.paginate_queryset(history, request, view=self)
+        return paginator.get_paginated_response(page)
 
     @staticmethod
     def _build_history(card_payments, gocardless_payments):
