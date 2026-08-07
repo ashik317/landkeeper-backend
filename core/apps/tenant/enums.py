@@ -22,3 +22,14 @@ class RentPaymentStatusChoices(models.TextChoices):
     FAILED = "FAILED", _("Failed")
     OVERDUE = "OVERDUE", _("Overdue")
     REFUNDED = "REFUNDED", _("Refunded")
+
+class MaintenanceStatus(models.TextChoices):
+    SUBMITTED = "SUBMITTED", _("Submitted")
+    ASSIGNED = "ASSIGNED", _("Assigned")
+    IN_PROGRESS = "IN_PROGRESS", _("In Progress")
+    COMPLETED = "COMPLETED", _("Completed")
+
+class MaintenanceCategory(models.TextChoices):
+    PLUMBING = "PLUMBING", "Plumbing"
+    CARPENTRY_SECURITY = "CARPENTRY_SECURITY", _("Carpentry_Security")
+    OTHER = "OTHER", _("Other")

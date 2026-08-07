@@ -16,7 +16,8 @@ from api.views.tenants import (
     GoCardlessWebhookView,
     FinancialOverviewListView,
     PropertyTenancyListView,
-    PaymentHistoryView,
+    PaymentHistoryView, EmergencyContactsAPIView, MaintenanceRequestListCreateAPIView,
+    MaintenanceRequestRetrieveUpdateDestroyAPIView, MaintenanceRequestReopenAPIView,
 )
 
 urlpatterns = [
@@ -99,5 +100,25 @@ urlpatterns = [
         "/financial-overview",
         FinancialOverviewListView.as_view(),
         name="financial-overview"
+    ),
+    path(
+        "/emergency-contacts",
+        EmergencyContactsAPIView.as_view(),
+        name="maintenance-emergency-contacts",
+    ),
+    path(
+        "/maintenance-requests",
+        MaintenanceRequestListCreateAPIView.as_view(),
+        name="maintenance-request-list-create",
+    ),
+    path(
+        "/maintenance-requests/<uuid:alias>",
+        MaintenanceRequestRetrieveUpdateDestroyAPIView.as_view(),
+        name="maintenance-request-detail",
+    ),
+    path(
+        "/maintenance-requests/<uuid:alias>/reopen",
+        MaintenanceRequestReopenAPIView.as_view(),
+        name="maintenance-request-reopen",
     ),
 ]
