@@ -7,7 +7,7 @@ from apps.tenant.enums import (
     PaymentProviderChoices,
     PaymentMethodTypeChoices,
     PaymentMethodStatusChoices,
-    RentPaymentStatusChoices
+    RentPaymentStatusChoices, MaintenanceCategory, MaintenanceStatus
 )
 from apps.tenant.utils import receipt_upload_path
 from common.models import CreatedAtUpdatedAtBaseModel
@@ -135,3 +135,41 @@ class CardPayment(CreatedAtUpdatedAtBaseModel):
 
     def __str__(self):
         return f"{self.alias} - {self.tenant} - £{self.amount}"
+
+
+
+class MaintenanceRequest(CreatedAtUpdatedAtBaseModel):
+    tenant = models.ForeignKey(
+        Tenant, on_delete=models.CASCADE, related_name="maintenance_requests"
+    )
+    property = models.ForeignKey(
+        Property, on_delete=models.CASCADE, related_name="maintenance_requests"
+    )
+    organisation = models.ForeignKey(
+        Organisation, on_delete=models.CASCADE, related_name="maintenance_requests"
+    )
+    issue = models.CharField(max_length=128, blank=True, null=True)
+    category = models.CharField(
+        max_length=32,
+        choices=MaintenanceCategory.choices,
+        default=MaintenanceCategory.PLUMBING,
+    )
+    current_status = models.CharField(
+        max_length=20,
+        choices=MaintenanceStatus.choices,
+        default=MaintenanceStatus.SUBMITTED
+    )
+    description = models.TextField(null=True, blank=True)
+    is_emergency = models.BooleanField(default=False)
+    document = models.FileField(upload_to=receipt_upload_path, blank=True, null=True)
+
+    class Meta:
+        ordering = ["-updated_at", "-created_at"]
+        indexes = [
+            models.Index(fields=["organisation", "tenant"]),
+            models.Index(fields=["current_status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.get_category_display()}"
+

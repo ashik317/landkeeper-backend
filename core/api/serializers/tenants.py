@@ -1,5 +1,6 @@
 import logging
 import calendar
+import re
 from datetime import date
 
 from django.db.models import Sum
@@ -7,8 +8,8 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from apps.property.models import Tenant
-from apps.tenant.enums import RentPaymentStatusChoices, PaymentProviderChoices
-from apps.tenant.models import PaymentMethod, RentPayment, CardPayment
+from apps.tenant.enums import RentPaymentStatusChoices, PaymentProviderChoices, MaintenanceStatus
+from apps.tenant.models import PaymentMethod, RentPayment, CardPayment, MaintenanceRequest
 
 logger = logging.getLogger(__name__)
 
@@ -299,3 +300,59 @@ class CardPaymentSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = fields
+
+
+class MaintenanceRequestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MaintenanceRequest
+        fields = [
+            "alias",
+            "tenant",
+            "property",
+            "organisation",
+            "issue",
+            "category",
+            "description",
+            "current_status",
+            "is_emergency",
+            "document",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "alias",
+            "tenant",
+            "property",
+            "organisation",
+            "current_status",
+            "created_at",
+            "updated_at",
+        ]
+
+    def create(self, validated_data):
+        request_user = self.context["request"].user
+
+        if not isinstance(request_user, Tenant):
+            raise serializers.ValidationError(
+                "Only authenticated tenants can submit maintenance requests."
+            )
+
+        validated_data.update({
+            "tenant": request_user,
+            "property": request_user.property,
+            "organisation": request_user.organisation,
+            "current_status": MaintenanceStatus.SUBMITTED,
+        })
+
+        return MaintenanceRequest.objects.create(**validated_data)
+
+    def update(self, instance, validated_data):
+        for field in (
+            "tenant",
+            "property",
+            "organisation",
+            "current_status",
+        ):
+            validated_data.pop(field, None)
+
+        return super().update(instance, validated_data)

@@ -11,6 +11,7 @@ from datetime import date, timedelta
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.http import FileResponse
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
@@ -46,19 +47,19 @@ from api.serializers.tenants import (
     DirectDebitSetupRequestSerializer,
     DirectDebitCompleteRequestSerializer,
     DirectDebitPaymentRequestSerializer,
-    LandlordRentPaymentCreateSerializer, CardPaymentSerializer,
+    LandlordRentPaymentCreateSerializer, CardPaymentSerializer, MaintenanceRequestSerializer,
 )
 from apps.authentication.permission import IsLandlord
 from apps.property.models import Tenant
 from apps.tenant.enums import RentPaymentStatusChoices, PaymentProviderChoices, PaymentMethodTypeChoices, \
-    PaymentMethodStatusChoices
+    PaymentMethodStatusChoices, MaintenanceStatus
 from apps.tenant.gocardless_client import (
     create_redirect_flow,
     complete_redirect_flow,
     create_payment as create_gocardless_payment,
     cancel_mandate,
 )
-from apps.tenant.models import PaymentMethod, RentPayment, ProcessedWebhookEvent, CardPayment
+from apps.tenant.models import PaymentMethod, RentPayment, ProcessedWebhookEvent, CardPayment, MaintenanceRequest
 from apps.tenant.permission import IsTenant
 from apps.tenant.stripe_client import create_payment_intent
 from apps.tenant.utils import get_statement_date_range
@@ -877,3 +878,67 @@ class PaymentHistoryView(APIView):
                 "updated_at": p.updated_at,
             })
         return rows
+
+class MaintenanceRequestListCreateAPIView(ListCreateAPIView):
+    serializer_class = MaintenanceRequestSerializer
+    permission_classes = [IsTenant]
+
+    def get_queryset(self):
+        return MaintenanceRequest.objects.filter(tenant=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save()
+        # notify_maintenance_request_submitted(instance)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+
+class MaintenanceRequestRetrieveUpdateDestroyAPIView(RetrieveUpdateDestroyAPIView):
+    serializer_class = MaintenanceRequestSerializer
+    permission_classes = [IsAuthenticated]
+    lookup_field = "alias"
+
+    def get_queryset(self):
+        return MaintenanceRequest.objects.filter(tenant=self.request.user)
+
+
+class MaintenanceRequestReopenAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self, alias):
+        obj = get_object_or_404(
+            MaintenanceRequest.objects.filter(tenant=self.request.user), alias=alias
+        )
+        self.check_object_permissions(self.request, obj)
+        return obj
+
+    def post(self, request, alias=None):
+        maintenance_request = self.get_object(alias)
+        if maintenance_request.current_status != MaintenanceStatus.COMPLETED:
+            return Response(
+                {"detail": "Only completed requests can be reopened."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        maintenance_request.current_status = MaintenanceStatus.SUBMITTED
+        maintenance_request.save(update_fields=["current_status"])
+        return Response(MaintenanceRequestSerializer(maintenance_request).data)
+
+
+class EmergencyContactsAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        org = request.user.get_organisation()
+        return Response(
+            {
+                "hotline_number": getattr(org, "emergency_hotline", "0800 555 9999"),
+                "trigger_conditions": [
+                    "Gas leak",
+                    "Major flooding",
+                    "Fire",
+                    "Total loss of heating in freezing temperatures",
+                ],
+            }
+        )
