@@ -11,7 +11,6 @@ from datetime import date, timedelta
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.http import FileResponse
-from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
@@ -47,19 +46,36 @@ from api.serializers.tenants import (
     DirectDebitSetupRequestSerializer,
     DirectDebitCompleteRequestSerializer,
     DirectDebitPaymentRequestSerializer,
-    LandlordRentPaymentCreateSerializer, CardPaymentSerializer, MaintenanceRequestSerializer,
+    LandlordRentPaymentCreateSerializer,
+    CardPaymentSerializer,
+    MaintenanceRequestSerializer,
 )
 from apps.authentication.permission import IsLandlord
 from apps.property.models import Tenant
-from apps.tenant.enums import RentPaymentStatusChoices, PaymentProviderChoices, PaymentMethodTypeChoices, \
-    PaymentMethodStatusChoices, MaintenanceStatus
+from apps.tenant.enums import (
+    RentPaymentStatusChoices,
+    PaymentProviderChoices,
+    PaymentMethodTypeChoices,
+    PaymentMethodStatusChoices,
+    MaintenanceStatus
+)
 from apps.tenant.gocardless_client import (
     create_redirect_flow,
     complete_redirect_flow,
     create_payment as create_gocardless_payment,
     cancel_mandate,
 )
-from apps.tenant.models import PaymentMethod, RentPayment, ProcessedWebhookEvent, CardPayment, MaintenanceRequest
+from apps.tenant.models import (
+    PaymentMethod,
+    RentPayment,
+    ProcessedWebhookEvent,
+    CardPayment,
+    MaintenanceRequest
+)
+from apps.notification.tasks import (
+    notify_maintenance_status_changed_task,
+    notify_maintenance_request_created_task
+)
 from apps.tenant.permission import IsTenant
 from apps.tenant.stripe_client import create_payment_intent
 from apps.tenant.utils import get_statement_date_range
@@ -886,14 +902,21 @@ class MaintenanceRequestListCreateAPIView(ListCreateAPIView):
     def get_queryset(self):
         return MaintenanceRequest.objects.filter(tenant=self.request.user)
 
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        instance = serializer.save()
-        # notify_maintenance_request_submitted(instance)
-        headers = self.get_success_headers(serializer.data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+    def perform_create(self, serializer):
+        tenant = self.request.user
 
+        maintenance_request = serializer.save(
+            tenant=tenant,
+            property=tenant.property,
+            organisation=tenant.organisation,
+            current_status=MaintenanceStatus.SUBMITTED,
+        )
+
+        transaction.on_commit(
+            lambda: notify_maintenance_request_created_task.delay(
+                maintenance_request.id
+            )
+        )
 
 class MaintenanceRequestRetrieveUpdateDestroyAPIView(RetrieveUpdateDestroyAPIView):
     serializer_class = MaintenanceRequestSerializer
@@ -902,6 +925,18 @@ class MaintenanceRequestRetrieveUpdateDestroyAPIView(RetrieveUpdateDestroyAPIVie
 
     def get_queryset(self):
         return MaintenanceRequest.objects.filter(tenant=self.request.user)
+
+    def perform_update(self, serializer):
+        previous_status = serializer.instance.current_status
+        instance = serializer.save()
+
+        if instance.current_status != previous_status:
+            transaction.on_commit(
+                lambda: notify_maintenance_status_changed_task.delay(
+                    instance.id,
+                    updated_by_id=self.request.user.id,
+                )
+            )
 
 
 class EmergencyContactsAPIView(APIView):

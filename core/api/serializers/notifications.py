@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from apps.notification.models import Notification
 from apps.supportticket.models import SupportTicket
+from apps.tenant.models import MaintenanceRequest
 
 
 class NotificationSerializer(serializers.ModelSerializer):
@@ -32,5 +33,11 @@ class NotificationSerializer(serializers.ModelSerializer):
             data["is_deleted"] = (
                 ticket.is_deleted if ticket else True
             )
+        elif data.get("type") == "MAINTENANCE_REQUEST":
+            alias = data.get("alias")
 
+            maintenance_request = MaintenanceRequest.objects.filter(
+                alias=alias
+            ).first()
+            data["is_deleted"] = maintenance_request is None
         return data

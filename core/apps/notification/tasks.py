@@ -3,9 +3,19 @@ from asgiref.sync import async_to_sync
 from celery import shared_task
 from channels.layers import get_channel_layer
 from django.apps import apps
+from django.conf import settings
 from apps.authentication.models import User
 from apps.notification.enums import NotificationType
 from apps.notification.models import Notification
+from apps.notification.utils import (
+    enrich_notification_data,
+    send_maintenance_request_created_email,
+    send_maintenance_status_changed_email,
+)
+from apps.organisation.enums import OrganisationRoleChoices
+from apps.organisation.models import OrganisationUser
+from apps.property.models import Tenant
+from apps.tenant.models import MaintenanceRequest
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +52,12 @@ def create_notification_task(
                 {
                     "type": "send_notification",
                     "payload": {
-                        "alias": str(notification.alias),
-                        "notification_type": notification.notification_type,
-                        "message": notification.message,
-                        "data": notification.data,
+                        "id": notification.id,
+                        "title": notification.get_notification_type_display(),
+                        "description": notification.message,
+                        "data": enrich_notification_data(notification.data),
+                        "is_read": notification.is_read,
+                        "read_at": notification.read_at.isoformat() if notification.read_at else None,
                         "created_at": notification.created_at.isoformat(),
                     },
                 },
@@ -131,3 +143,153 @@ def cleanup_old_notifications(days=30):
     ).delete()
     logger.info("cleanup_old_notifications: deleted %s notifications", deleted_count)
     return deleted_count
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=10)
+def notify_maintenance_request_created_task(self, maintenance_request_id):
+    try:
+        maintenance_request = (
+            MaintenanceRequest.objects
+            .select_related(
+                "tenant",
+                "property",
+                "organisation",
+            )
+            .get(pk=maintenance_request_id)
+        )
+
+        organisation = maintenance_request.organisation
+
+        organisation_users = (
+            OrganisationUser.objects
+            .filter(
+                organisation=organisation,
+                role__in=[
+                    OrganisationRoleChoices.LANDLORD,
+                    OrganisationRoleChoices.ADMIN,
+                    OrganisationRoleChoices.LETTING_AGENT,
+                ],
+                user__is_active=True,
+            )
+            .select_related("user")
+        )
+
+        for organisation_user in organisation_users:
+            user = organisation_user.user
+
+            message = (
+                f"New maintenance request from "
+                f"{maintenance_request.tenant.get_full_name()} "
+                f"for {maintenance_request.property}."
+            )
+
+            create_notification_task.delay(
+                recipient_id=user.id,
+                notification_type=NotificationType.NEW_MAINTENANCE_REQUEST,
+                message=message,
+                data={
+                    "type": "MAINTENANCE_REQUEST",
+                    "alias": str(maintenance_request.alias),
+                    "category": maintenance_request.category,
+                    "is_emergency": maintenance_request.is_emergency,
+                },
+                actor_id=None,
+            )
+
+            send_maintenance_request_email.delay(
+                maintenance_request.id,
+                user.id,
+            )
+
+    except MaintenanceRequest.DoesNotExist:
+        logger.warning(
+            "Maintenance request %s no longer exists",
+            maintenance_request_id,
+        )
+        return
+
+    except Exception as exc:
+        logger.exception(
+            "Failed to notify organisation users for maintenance request %s",
+            maintenance_request_id,
+        )
+        raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=10)
+def send_maintenance_request_email(self, maintenance_request_id, user_id):
+    try:
+        maintenance_request = (
+            MaintenanceRequest.objects
+            .select_related("tenant", "property", "organisation")
+            .get(pk=maintenance_request_id)
+        )
+        user = User.objects.get(pk=user_id, is_active=True)
+
+        send_maintenance_request_created_email(maintenance_request, user)
+
+    except Exception as exc:
+        logger.exception(
+            "Failed to send maintenance request email for request %s",
+            maintenance_request_id,
+        )
+        raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=10)
+def notify_maintenance_status_changed_task(
+    self,
+    maintenance_request_id,
+    updated_by_id=None,
+):
+    try:
+        maintenance_request = (
+            MaintenanceRequest.objects
+            .select_related(
+                "tenant",
+                "property",
+                "organisation",
+            )
+            .get(pk=maintenance_request_id)
+        )
+
+        tenant = maintenance_request.tenant
+
+        if not tenant:
+            return
+        send_maintenance_status_email.delay(
+            maintenance_request.id,
+            tenant.id,
+        )
+
+    except MaintenanceRequest.DoesNotExist:
+        logger.warning(
+            "Maintenance request %s no longer exists",
+            maintenance_request_id,
+        )
+
+    except Exception as exc:
+        logger.exception(
+            "Failed to notify tenant about maintenance request %s",
+            maintenance_request_id,
+        )
+        raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=10)
+def send_maintenance_status_email(self, maintenance_request_id, tenant_id):
+    try:
+        maintenance_request = (
+            MaintenanceRequest.objects
+            .select_related("tenant", "property", "organisation")
+            .get(pk=maintenance_request_id)
+        )
+        tenant = Tenant.objects.get(pk=tenant_id, is_active=True)
+
+        send_maintenance_status_changed_email(maintenance_request, tenant)
+
+    except Exception as exc:
+        logger.exception(
+            "Failed to send maintenance status email for request %s",
+            maintenance_request_id,
+        )
+        raise self.retry(exc=exc)
