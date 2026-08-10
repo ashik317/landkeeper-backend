@@ -17,4 +17,5 @@ class NameTitleChoices(models.TextChoices):
 class UserRoleChoices(models.TextChoices):
     LANDLORD = "LANDLORD", _("Landlord")
     ADMIN = "ADMIN", _("Admin")
+    MORTGAGE_ADVISER = "MORTGAGE_ADVISER", _("Mortgage Adviser")
     LETTING_AGENT = "LETTING_AGENT", _("Letting Agent")
