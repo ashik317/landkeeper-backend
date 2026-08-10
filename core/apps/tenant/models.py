@@ -140,13 +140,19 @@ class CardPayment(CreatedAtUpdatedAtBaseModel):
 
 class MaintenanceRequest(CreatedAtUpdatedAtBaseModel):
     tenant = models.ForeignKey(
-        Tenant, on_delete=models.CASCADE, related_name="maintenance_requests"
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name="tenant_maintenance_requests",
     )
     property = models.ForeignKey(
-        Property, on_delete=models.CASCADE, related_name="maintenance_requests"
+        Property,
+        on_delete=models.CASCADE,
+        related_name="property_maintenance_requests",
     )
     organisation = models.ForeignKey(
-        Organisation, on_delete=models.CASCADE, related_name="maintenance_requests"
+        Organisation,
+        on_delete=models.CASCADE,
+        related_name="organisation_maintenance_requests",
     )
     issue = models.CharField(max_length=128, blank=True, null=True)
     category = models.CharField(

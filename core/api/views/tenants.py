@@ -904,36 +904,18 @@ class MaintenanceRequestRetrieveUpdateDestroyAPIView(RetrieveUpdateDestroyAPIVie
         return MaintenanceRequest.objects.filter(tenant=self.request.user)
 
 
-class MaintenanceRequestReopenAPIView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get_object(self, alias):
-        obj = get_object_or_404(
-            MaintenanceRequest.objects.filter(tenant=self.request.user), alias=alias
-        )
-        self.check_object_permissions(self.request, obj)
-        return obj
-
-    def post(self, request, alias=None):
-        maintenance_request = self.get_object(alias)
-        if maintenance_request.current_status != MaintenanceStatus.COMPLETED:
-            return Response(
-                {"detail": "Only completed requests can be reopened."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        maintenance_request.current_status = MaintenanceStatus.SUBMITTED
-        maintenance_request.save(update_fields=["current_status"])
-        return Response(MaintenanceRequestSerializer(maintenance_request).data)
-
-
 class EmergencyContactsAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        org = request.user.get_organisation()
+        org = request.user.organisation
         return Response(
             {
-                "hotline_number": getattr(org, "emergency_hotline", "0800 555 9999"),
+                "hotline_number": getattr(
+                    org,
+                    "emergency_hotline",
+                    "0800 555 9999",
+                ),
                 "trigger_conditions": [
                     "Gas leak",
                     "Major flooding",

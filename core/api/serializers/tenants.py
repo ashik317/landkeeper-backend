@@ -336,13 +336,14 @@ class MaintenanceRequestSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Only authenticated tenants can submit maintenance requests."
             )
-
-        validated_data.update({
-            "tenant": request_user,
-            "property": request_user.property,
-            "organisation": request_user.organisation,
-            "current_status": MaintenanceStatus.SUBMITTED,
-        })
+        validated_data.update(
+            {
+                "tenant": request_user,
+                "property": request_user.property,
+                "organisation": request_user.organisation,
+                "current_status": MaintenanceStatus.SUBMITTED,
+            }
+        )
 
         return MaintenanceRequest.objects.create(**validated_data)
 
