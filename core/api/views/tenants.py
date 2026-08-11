@@ -50,7 +50,6 @@ from api.serializers.tenants import (
     CardPaymentSerializer,
     MaintenanceRequestSerializer,
 )
-from apps.authentication.permission import IsLandlord
 from apps.property.models import Tenant
 from apps.tenant.enums import (
     RentPaymentStatusChoices,
@@ -76,9 +75,13 @@ from apps.notification.tasks import (
     notify_maintenance_status_changed_task,
     notify_maintenance_request_created_task
 )
-from apps.tenant.permission import IsTenant
 from apps.tenant.stripe_client import create_payment_intent
 from apps.tenant.utils import get_statement_date_range
+from common.models import DocumentFile
+from common.permission import (
+    IsTenant,
+    IsLandlord
+)
 
 logger = logging.getLogger("apps.tenant.payments")
 
@@ -897,14 +900,25 @@ class PaymentHistoryView(APIView):
 
 class MaintenanceRequestListCreateAPIView(ListCreateAPIView):
     serializer_class = MaintenanceRequestSerializer
-    permission_classes = [IsTenant]
+
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [IsTenant()]
+        return [(IsTenant | IsLandlord)()]
 
     def get_queryset(self):
-        return MaintenanceRequest.objects.filter(tenant=self.request.user)
+        user = self.request.user
+        if isinstance(user, Tenant):
+            return MaintenanceRequest.objects.filter(tenant=user)
+
+        organisation = user.get_organisation()
+        if organisation:
+            return MaintenanceRequest.objects.filter(organisation=organisation)
+
+        return MaintenanceRequest.objects.none()
 
     def perform_create(self, serializer):
         tenant = self.request.user
-
         maintenance_request = serializer.save(
             tenant=tenant,
             property=tenant.property,
@@ -912,6 +926,12 @@ class MaintenanceRequestListCreateAPIView(ListCreateAPIView):
             current_status=MaintenanceStatus.SUBMITTED,
         )
 
+        files = self.request.FILES.getlist("documents")
+        document_files = [
+            DocumentFile.objects.create(file=file)
+            for file in files
+        ]
+        maintenance_request.documents.set(document_files)
         transaction.on_commit(
             lambda: notify_maintenance_request_created_task.delay(
                 maintenance_request.id
@@ -920,16 +940,27 @@ class MaintenanceRequestListCreateAPIView(ListCreateAPIView):
 
 class MaintenanceRequestRetrieveUpdateDestroyAPIView(RetrieveUpdateDestroyAPIView):
     serializer_class = MaintenanceRequestSerializer
-    permission_classes = [IsAuthenticated]
     lookup_field = "alias"
 
+    def get_permissions(self):
+        if self.request.method == "DELETE":
+            return [IsTenant()]
+        return [(IsTenant | IsLandlord)()]
+
     def get_queryset(self):
-        return MaintenanceRequest.objects.filter(tenant=self.request.user)
+        user = self.request.user
+        if isinstance(user, Tenant):
+            return MaintenanceRequest.objects.filter(tenant=user)
+
+        organisation = user.get_organisation()
+        if organisation:
+            return MaintenanceRequest.objects.filter(organisation=organisation)
+
+        return MaintenanceRequest.objects.none()
 
     def perform_update(self, serializer):
         previous_status = serializer.instance.current_status
         instance = serializer.save()
-
         if instance.current_status != previous_status:
             transaction.on_commit(
                 lambda: notify_maintenance_status_changed_task.delay(
@@ -937,25 +968,3 @@ class MaintenanceRequestRetrieveUpdateDestroyAPIView(RetrieveUpdateDestroyAPIVie
                     updated_by_id=self.request.user.id,
                 )
             )
-
-
-class EmergencyContactsAPIView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        org = request.user.organisation
-        return Response(
-            {
-                "hotline_number": getattr(
-                    org,
-                    "emergency_hotline",
-                    "0800 555 9999",
-                ),
-                "trigger_conditions": [
-                    "Gas leak",
-                    "Major flooding",
-                    "Fire",
-                    "Total loss of heating in freezing temperatures",
-                ],
-            }
-        )

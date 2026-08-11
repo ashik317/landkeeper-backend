@@ -7,9 +7,12 @@ from django.db.models import Sum
 from django.utils import timezone
 from rest_framework import serializers
 
+from apps.organisation.enums import OrganisationRoleChoices
+from apps.organisation.models import OrganisationUser
 from apps.property.models import Tenant
 from apps.tenant.enums import RentPaymentStatusChoices, PaymentProviderChoices, MaintenanceStatus
 from apps.tenant.models import PaymentMethod, RentPayment, CardPayment, MaintenanceRequest
+from common.models import DocumentFile
 
 logger = logging.getLogger(__name__)
 
@@ -301,8 +304,17 @@ class CardPaymentSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+class DocumentFileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DocumentFile
+        fields = ["id", "file"]
 
 class MaintenanceRequestSerializer(serializers.ModelSerializer):
+    documents = DocumentFileSerializer(
+        many=True,
+        read_only=True,
+    )
+
     class Meta:
         model = MaintenanceRequest
         fields = [
@@ -312,10 +324,10 @@ class MaintenanceRequestSerializer(serializers.ModelSerializer):
             "organisation",
             "issue",
             "category",
-            "description",
             "current_status",
             "is_emergency",
-            "document",
+            "notes",
+            "documents",
             "created_at",
             "updated_at",
         ]
@@ -324,35 +336,36 @@ class MaintenanceRequestSerializer(serializers.ModelSerializer):
             "tenant",
             "property",
             "organisation",
-            "current_status",
             "created_at",
             "updated_at",
         ]
 
-    def create(self, validated_data):
-        request_user = self.context["request"].user
+    def validate(self, attrs):
+        user = self.context["request"].user
 
-        if not isinstance(request_user, Tenant):
-            raise serializers.ValidationError(
-                "Only authenticated tenants can submit maintenance requests."
-            )
-        validated_data.update(
-            {
-                "tenant": request_user,
-                "property": request_user.property,
-                "organisation": request_user.organisation,
-                "current_status": MaintenanceStatus.SUBMITTED,
-            }
-        )
+        if isinstance(user, Tenant):
+            attrs.pop("current_status", None)
+            return attrs
 
-        return MaintenanceRequest.objects.create(**validated_data)
+        is_landlord = OrganisationUser.objects.filter(
+            user=user,
+            role=OrganisationRoleChoices.LANDLORD,
+        ).exists()
+
+        if is_landlord:
+            allowed_fields = {"current_status"}
+            invalid_fields = set(attrs.keys()) - allowed_fields
+            if invalid_fields:
+                raise serializers.ValidationError(
+                    {"detail": "Landlords can only update the maintenance request status."}
+                )
+        return attrs
 
     def update(self, instance, validated_data):
         for field in (
             "tenant",
             "property",
             "organisation",
-            "current_status",
         ):
             validated_data.pop(field, None)
 

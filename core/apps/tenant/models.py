@@ -10,7 +10,7 @@ from apps.tenant.enums import (
     RentPaymentStatusChoices, MaintenanceCategory, MaintenanceStatus
 )
 from apps.tenant.utils import receipt_upload_path
-from common.models import CreatedAtUpdatedAtBaseModel
+from common.models import CreatedAtUpdatedAtBaseModel, DocumentFile
 
 
 class PaymentMethod(CreatedAtUpdatedAtBaseModel):
@@ -154,7 +154,7 @@ class MaintenanceRequest(CreatedAtUpdatedAtBaseModel):
         on_delete=models.CASCADE,
         related_name="organisation_maintenance_requests",
     )
-    issue = models.CharField(max_length=128, blank=True, null=True)
+    issue = models.TextField(null=True, blank=True)
     category = models.CharField(
         max_length=32,
         choices=MaintenanceCategory.choices,
@@ -165,9 +165,13 @@ class MaintenanceRequest(CreatedAtUpdatedAtBaseModel):
         choices=MaintenanceStatus.choices,
         default=MaintenanceStatus.SUBMITTED
     )
-    description = models.TextField(null=True, blank=True)
+    notes = models.TextField(null=True, blank=True)
     is_emergency = models.BooleanField(default=False)
-    document = models.FileField(upload_to=receipt_upload_path, blank=True, null=True)
+    documents = models.ManyToManyField(
+        DocumentFile,
+        blank=True,
+        related_name="maintenance_requests",
+    )
 
     class Meta:
         ordering = ["-updated_at", "-created_at"]
