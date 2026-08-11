@@ -14,6 +14,7 @@ from django.http import FileResponse
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+from django_filters.rest_framework import DjangoFilterBackend
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -26,6 +27,7 @@ from reportlab.platypus import (
     Spacer,
 )
 from rest_framework import permissions, status
+from rest_framework.filters import SearchFilter
 from rest_framework.generics import (
     ListCreateAPIView,
     RetrieveUpdateDestroyAPIView,
@@ -900,6 +902,14 @@ class PaymentHistoryView(APIView):
 
 class MaintenanceRequestListCreateAPIView(ListCreateAPIView):
     serializer_class = MaintenanceRequestSerializer
+    filterset_fields = [
+        "is_emergency",
+        "current_status",
+        "category",
+        "organisation",
+        "property",
+        "tenant",
+    ]
 
     def get_permissions(self):
         if self.request.method == "POST":

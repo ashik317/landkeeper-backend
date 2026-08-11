@@ -3,14 +3,24 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from apps.notification.enums import NotificationType
+from apps.property.models import Tenant
 from common.models import CreatedAtUpdatedAtBaseModel
 from apps.authentication.models import User
 
 class Notification(CreatedAtUpdatedAtBaseModel):
     recipient = models.ForeignKey(
         User,
+        null=True,
+        blank=True,
         on_delete=models.CASCADE,
-        related_name="notifications",
+        related_name="user_notifications",
+    )
+    tenant = models.ForeignKey(
+        Tenant,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="tenant_notifications",
     )
     notification_type = models.CharField(
         max_length=50,
@@ -23,11 +33,10 @@ class Notification(CreatedAtUpdatedAtBaseModel):
 
     class Meta:
         ordering = ["-created_at"]
-        verbose_name = "Notification"
-        verbose_name_plural = "Notifications"
 
     def __str__(self):
-        return f"{self.recipient.email} - {self.notification_type}"
+        user = self.tenant or self.recipient
+        return f"{user.email} - {self.notification_type}"
 
     def mark_as_read(self):
         if not self.is_read:
