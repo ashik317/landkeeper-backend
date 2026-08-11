@@ -314,11 +314,16 @@ class MaintenanceRequestSerializer(serializers.ModelSerializer):
         many=True,
         read_only=True,
     )
+    request_id = serializers.SerializerMethodField()
+    tenant = serializers.SerializerMethodField()
+    property = serializers.SerializerMethodField()
+    organisation = serializers.SerializerMethodField()
 
     class Meta:
         model = MaintenanceRequest
         fields = [
             "alias",
+            "request_id",
             "tenant",
             "property",
             "organisation",
@@ -339,6 +344,20 @@ class MaintenanceRequestSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def get_request_id(self, obj):
+        return f"#MR-{obj.id:08d}"
+
+    def get_tenant(self, obj):
+        return obj.tenant.get_full_name() if obj.tenant else None
+
+    def get_property(self, obj):
+        if not obj.property:
+            return None
+        return f"{obj.property.property_name} - {obj.property.address}"
+
+    def get_organisation(self, obj):
+        return obj.organisation.name if obj.organisation else None
 
     def validate(self, attrs):
         user = self.context["request"].user
