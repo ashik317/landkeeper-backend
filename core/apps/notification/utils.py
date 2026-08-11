@@ -55,7 +55,7 @@ def _build_maintenance_request_pdf(maintenance_request):
         ["Property", str(maintenance_request.property)],
         ["Category", maintenance_request.get_category_display()],
         ["Issue", maintenance_request.issue or "N/A"],
-        ["Description", maintenance_request.description or "N/A"],
+        ["Description", maintenance_request.notes or "N/A"],
         ["Emergency", "Yes" if maintenance_request.is_emergency else "No"],
     ]
 

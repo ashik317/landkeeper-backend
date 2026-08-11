@@ -3,7 +3,6 @@ from asgiref.sync import async_to_sync
 from celery import shared_task
 from channels.layers import get_channel_layer
 from django.apps import apps
-from django.conf import settings
 from apps.authentication.models import User
 from apps.notification.enums import NotificationType
 from apps.notification.models import Notification
@@ -66,6 +65,43 @@ def create_notification_task(
         return str(notification.alias)
     except Exception as exc:
         logger.exception("Failed to create notification for recipient_id=%s", recipient_id)
+        raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=10)
+def push_tenant_notification_task(
+    self,
+    tenant_id,
+    notification_type,
+    message,
+    data=None,
+):
+    try:
+        channel_layer = get_channel_layer()
+        if channel_layer is None:
+            logger.warning(
+                "push_tenant_notification_task: no channel layer configured, "
+                "skipping live push for tenant_id=%s", tenant_id,
+            )
+            return
+
+        async_to_sync(channel_layer.group_send)(
+            f"notifications_{tenant_id}",
+            {
+                "type": "send_notification",
+                "payload": {
+                    "title": notification_type,
+                    "description": message,
+                    "data": enrich_notification_data(data or {}),
+                    "is_read": False,
+                    "read_at": None,
+                },
+            },
+        )
+    except Exception as exc:
+        logger.exception(
+            "Failed to push live notification for tenant_id=%s", tenant_id,
+        )
         raise self.retry(exc=exc)
 
 
@@ -144,6 +180,7 @@ def cleanup_old_notifications(days=30):
     logger.info("cleanup_old_notifications: deleted %s notifications", deleted_count)
     return deleted_count
 
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=10)
 def notify_maintenance_request_created_task(self, maintenance_request_id):
     try:
@@ -173,14 +210,14 @@ def notify_maintenance_request_created_task(self, maintenance_request_id):
             .select_related("user")
         )
 
+        message = (
+            f"New maintenance request from "
+            f"{maintenance_request.tenant.get_full_name()} "
+            f"for {maintenance_request.property}."
+        )
+
         for organisation_user in organisation_users:
             user = organisation_user.user
-
-            message = (
-                f"New maintenance request from "
-                f"{maintenance_request.tenant.get_full_name()} "
-                f"for {maintenance_request.property}."
-            )
 
             create_notification_task.delay(
                 recipient_id=user.id,
@@ -256,6 +293,22 @@ def notify_maintenance_status_changed_task(
 
         if not tenant:
             return
+
+        push_tenant_notification_task.delay(
+            tenant_id=tenant.id,
+            notification_type=NotificationType.MAINTENANCE_STATUS_CHANGED,
+            message=(
+                f"Your maintenance request for {maintenance_request.property} "
+                f"is now {maintenance_request.get_current_status_display()}."
+            ),
+            data={
+                "type": "MAINTENANCE_REQUEST",
+                "alias": str(maintenance_request.alias),
+                "category": maintenance_request.category,
+                "is_emergency": maintenance_request.is_emergency,
+            },
+        )
+
         send_maintenance_status_email.delay(
             maintenance_request.id,
             tenant.id,
