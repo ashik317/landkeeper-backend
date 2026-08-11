@@ -907,9 +907,8 @@ class MaintenanceRequestListCreateAPIView(ListCreateAPIView):
         "current_status",
         "category",
         "organisation",
-        "property",
-        "tenant",
     ]
+    search_fields = ["property", "tenant"]
 
     def get_permissions(self):
         if self.request.method == "POST":
