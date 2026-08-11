@@ -19,19 +19,3 @@ class IsLandlord(BasePermission):
             user=request.user,
             role=OrganisationRoleChoices.LANDLORD,
         ).exists()
-
-
-class IsTenantOrLandlord(BasePermission):
-    def has_permission(self, request, view):
-        user = request.user
-        if not user or not user.is_authenticated:
-            return False
-        if isinstance(user, Tenant):
-            return request.method in ["GET", "POST"]
-        is_landlord = OrganisationUser.objects.filter(
-            user=user,
-            role=OrganisationRoleChoices.LANDLORD,
-        ).exists()
-        if is_landlord:
-            return request.method == "GET"
-        return False

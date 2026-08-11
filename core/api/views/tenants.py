@@ -79,7 +79,6 @@ from apps.tenant.stripe_client import create_payment_intent
 from apps.tenant.utils import get_statement_date_range
 from common.models import DocumentFile
 from common.permission import (
-    IsTenantOrLandlord,
     IsTenant,
     IsLandlord
 )
@@ -901,7 +900,11 @@ class PaymentHistoryView(APIView):
 
 class MaintenanceRequestListCreateAPIView(ListCreateAPIView):
     serializer_class = MaintenanceRequestSerializer
-    permission_classes = [IsTenantOrLandlord]
+
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [IsTenant()]
+        return [(IsTenant | IsLandlord)()]
 
     def get_queryset(self):
         user = self.request.user
