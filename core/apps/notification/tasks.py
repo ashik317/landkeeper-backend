@@ -1,4 +1,5 @@
 import logging
+from django.utils import timezone
 from asgiref.sync import async_to_sync
 from celery import shared_task
 from channels.layers import get_channel_layer
@@ -95,6 +96,7 @@ def push_tenant_notification_task(
                     "data": enrich_notification_data(data or {}),
                     "is_read": False,
                     "read_at": None,
+                    "created_at": timezone.now().isoformat(),
                 },
             },
         )
@@ -180,9 +182,11 @@ def cleanup_old_notifications(days=30):
     logger.info("cleanup_old_notifications: deleted %s notifications", deleted_count)
     return deleted_count
 
-
 @shared_task(bind=True, max_retries=3, default_retry_delay=10)
-def notify_maintenance_request_created_task(self, maintenance_request_id):
+def notify_maintenance_request_created_task(
+    self,
+    maintenance_request_id,
+):
     try:
         maintenance_request = (
             MaintenanceRequest.objects
@@ -216,22 +220,26 @@ def notify_maintenance_request_created_task(self, maintenance_request_id):
             f"for {maintenance_request.property}."
         )
 
+        data = {
+            "type": "MAINTENANCE_REQUEST",
+            "alias": str(maintenance_request.alias),
+            "category": maintenance_request.category,
+            "is_emergency": maintenance_request.is_emergency,
+        }
+
         for organisation_user in organisation_users:
             user = organisation_user.user
 
+            # Database notification
             create_notification_task.delay(
                 recipient_id=user.id,
                 notification_type=NotificationType.NEW_MAINTENANCE_REQUEST,
                 message=message,
-                data={
-                    "type": "MAINTENANCE_REQUEST",
-                    "alias": str(maintenance_request.alias),
-                    "category": maintenance_request.category,
-                    "is_emergency": maintenance_request.is_emergency,
-                },
+                data=data,
                 actor_id=None,
             )
 
+            # Email notification
             send_maintenance_request_email.delay(
                 maintenance_request.id,
                 user.id,
@@ -294,21 +302,35 @@ def notify_maintenance_status_changed_task(
         if not tenant:
             return
 
+        message = (
+            f"Your maintenance request for {maintenance_request.property} "
+            f"is now {maintenance_request.get_current_status_display()}."
+        )
+
+        data = {
+            "type": "MAINTENANCE_REQUEST",
+            "alias": str(maintenance_request.alias),
+            "category": maintenance_request.category,
+            "is_emergency": maintenance_request.is_emergency,
+        }
+
+        # Database notification
+        Notification.objects.create(
+            tenant=tenant,
+            notification_type=NotificationType.MAINTENANCE_STATUS_CHANGED,
+            message=message,
+            data=data,
+        )
+
+        # Push notification
         push_tenant_notification_task.delay(
             tenant_id=tenant.id,
             notification_type=NotificationType.MAINTENANCE_STATUS_CHANGED,
-            message=(
-                f"Your maintenance request for {maintenance_request.property} "
-                f"is now {maintenance_request.get_current_status_display()}."
-            ),
-            data={
-                "type": "MAINTENANCE_REQUEST",
-                "alias": str(maintenance_request.alias),
-                "category": maintenance_request.category,
-                "is_emergency": maintenance_request.is_emergency,
-            },
+            message=message,
+            data=data,
         )
 
+        # Email notification
         send_maintenance_status_email.delay(
             maintenance_request.id,
             tenant.id,
@@ -326,7 +348,6 @@ def notify_maintenance_status_changed_task(
             maintenance_request_id,
         )
         raise self.retry(exc=exc)
-
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=10)
 def send_maintenance_status_email(self, maintenance_request_id, tenant_id):
