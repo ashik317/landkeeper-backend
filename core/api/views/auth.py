@@ -26,9 +26,9 @@ from rest_framework.views import APIView
 from rest_framework.generics import CreateAPIView, RetrieveUpdateAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from apps.authentication.permission import IsLandlord
 from apps.authentication.signals import create_default_organisation
 from apps.property.models import Tenant
+from common.permission import IsLandlord
 from ..serializers.auth import (
     UserRegistrationSerializer,
     UserProfileSerializer,
@@ -183,7 +183,7 @@ class ForgotPasswordView(APIView):
         email = request.data.get("email")
 
         # Check if email field is provided
-        if not email:   
+        if not email:
             return Response(
                 {"email": "This field is required."}, status=status.HTTP_400_BAD_REQUEST
             )

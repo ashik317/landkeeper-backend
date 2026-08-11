@@ -50,7 +50,6 @@ from api.serializers.tenants import (
     CardPaymentSerializer,
     MaintenanceRequestSerializer,
 )
-from apps.authentication.permission import IsLandlord
 from apps.property.models import Tenant
 from apps.tenant.enums import (
     RentPaymentStatusChoices,
@@ -79,7 +78,7 @@ from apps.notification.tasks import (
 from apps.tenant.stripe_client import create_payment_intent
 from apps.tenant.utils import get_statement_date_range
 from common.models import DocumentFile
-from common.permission import IsTenantOrLandlord, IsTenant, IsTenantOrLandlordForMaintenance
+from common.permission import IsTenantOrLandlord, IsTenant, IsTenantOrLandlordForMaintenance, IsLandlord
 
 logger = logging.getLogger("apps.tenant.payments")
 
@@ -932,27 +931,23 @@ class MaintenanceRequestListCreateAPIView(ListCreateAPIView):
             )
         )
 
-class MaintenanceRequestRetrieveUpdateDestroyAPIView(
-    RetrieveUpdateDestroyAPIView
-):
+class MaintenanceRequestRetrieveUpdateDestroyAPIView(RetrieveUpdateDestroyAPIView):
     serializer_class = MaintenanceRequestSerializer
-    permission_classes = [IsTenantOrLandlordForMaintenance]
     lookup_field = "alias"
+
+    def get_permissions(self):
+        if self.request.method == "DELETE":
+            return [IsTenant()]
+        return [(IsTenant | IsLandlord)()]
 
     def get_queryset(self):
         user = self.request.user
-        # Tenant own maintenance requests
         if isinstance(user, Tenant):
-            return MaintenanceRequest.objects.filter(
-                tenant=user
-            )
-        # Landlord organisation maintenance requests
-        organisation = user.get_organisation()
+            return MaintenanceRequest.objects.filter(tenant=user)
 
+        organisation = user.get_organisation()
         if organisation:
-            return MaintenanceRequest.objects.filter(
-                organisation=organisation
-            )
+            return MaintenanceRequest.objects.filter(organisation=organisation)
 
         return MaintenanceRequest.objects.none()
 
