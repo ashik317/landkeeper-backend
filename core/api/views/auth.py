@@ -182,16 +182,13 @@ class ForgotPasswordView(APIView):
     def post(self, request):
         email = request.data.get("email")
 
-        # Check if email field is provided
         if not email:
             return Response(
                 {"email": "This field is required."}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Check if email format is valid
         from django.core.validators import validate_email
         from django.core.exceptions import ValidationError
-
         try:
             validate_email(email)
         except ValidationError:
@@ -200,16 +197,16 @@ class ForgotPasswordView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Check if user exists with this email
-        try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist:
+        user = User.objects.filter(email=email).first()
+        if not user:
+            user = Tenant.objects.filter(email=email).first()
+
+        if not user:
             return Response(
                 {"email": "No account found with this email address."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Check if the user account is active
         if not user.is_active:
             return Response(
                 {"email": "This account is inactive. Please contact support."},
@@ -217,7 +214,6 @@ class ForgotPasswordView(APIView):
             )
 
         send_password_reset_email(user)
-
         return Response(
             {"detail": "Password reset link has been sent to your email."},
             status=status.HTTP_200_OK,
@@ -227,11 +223,17 @@ class ForgotPasswordView(APIView):
 class SetForgotPasswordView(APIView):
     permission_classes = [AllowAny]
 
+    def get_user_or_tenant(self, uid):
+        try:
+            return User.objects.get(pk=uid)
+        except User.DoesNotExist:
+            return Tenant.objects.get(pk=uid)
+
     def get(self, request, uidb64, token):
         try:
             uid = urlsafe_base64_decode(uidb64).decode()
-            user = User.objects.get(pk=uid)
-        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            user = self.get_user_or_tenant(uid)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist, Tenant.DoesNotExist):
             params = urlencode({"error": "invalid_link"})
             return HttpResponseRedirect(
                 f"{settings.FRONTEND_URL}/auth/password-error?{params}"
@@ -266,8 +268,8 @@ class SetForgotPasswordView(APIView):
 
         try:
             uid = urlsafe_base64_decode(uidb64).decode()
-            user = User.objects.get(pk=uid)
-        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            user = self.get_user_or_tenant(uid)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist, Tenant.DoesNotExist):
             return Response(
                 {"detail": "Invalid reset link."}, status=status.HTTP_400_BAD_REQUEST
             )
@@ -284,7 +286,6 @@ class SetForgotPasswordView(APIView):
             {"detail": "Password has been reset successfully."},
             status=status.HTTP_200_OK,
         )
-
 
 class UpdatePasswordView(APIView):
     permission_classes = [IsAuthenticated]
