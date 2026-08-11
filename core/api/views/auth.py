@@ -183,7 +183,7 @@ class ForgotPasswordView(APIView):
         email = request.data.get("email")
 
         # Check if email field is provided
-        if not email:
+        if not email:   
             return Response(
                 {"email": "This field is required."}, status=status.HTTP_400_BAD_REQUEST
             )

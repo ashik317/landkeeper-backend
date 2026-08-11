@@ -17,7 +17,6 @@ from api.views.tenants import (
     FinancialOverviewListView,
     PropertyTenancyListView,
     PaymentHistoryView,
-    EmergencyContactsAPIView,
     MaintenanceRequestListCreateAPIView,
     MaintenanceRequestRetrieveUpdateDestroyAPIView,
 )
@@ -102,11 +101,6 @@ urlpatterns = [
         "/financial-overview",
         FinancialOverviewListView.as_view(),
         name="financial-overview"
-    ),
-    path(
-        "/emergency-contacts",
-        EmergencyContactsAPIView.as_view(),
-        name="maintenance-emergency-contacts",
     ),
     path(
         "/maintenance-requests",
