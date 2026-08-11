@@ -78,7 +78,11 @@ from apps.notification.tasks import (
 from apps.tenant.stripe_client import create_payment_intent
 from apps.tenant.utils import get_statement_date_range
 from common.models import DocumentFile
-from common.permission import IsTenantOrLandlord, IsTenant, IsTenantOrLandlordForMaintenance, IsLandlord
+from common.permission import (
+    IsTenantOrLandlord,
+    IsTenant,
+    IsLandlord
+)
 
 logger = logging.getLogger("apps.tenant.payments")
 
