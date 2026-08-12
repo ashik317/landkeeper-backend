@@ -3,6 +3,7 @@ import calendar
 import re
 from datetime import date
 
+from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 from rest_framework import serializers
@@ -310,10 +311,17 @@ class DocumentFileSerializer(serializers.ModelSerializer):
         fields = ["id", "file"]
 
 class MaintenanceRequestSerializer(serializers.ModelSerializer):
-    documents = DocumentFileSerializer(
-        many=True,
-        read_only=True,
+    documents = serializers.ListField(
+        child=serializers.FileField(),
+        required=False,
+        write_only=True,
     )
+    removed_document_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        write_only=True,
+        required=False,
+    )
+
     request_id = serializers.SerializerMethodField()
     tenant = serializers.SerializerMethodField()
     property = serializers.SerializerMethodField()
@@ -333,6 +341,7 @@ class MaintenanceRequestSerializer(serializers.ModelSerializer):
             "is_emergency",
             "notes",
             "documents",
+            "removed_document_ids",
             "created_at",
             "updated_at",
         ]
@@ -359,6 +368,14 @@ class MaintenanceRequestSerializer(serializers.ModelSerializer):
     def get_organisation(self, obj):
         return obj.organisation.name if obj.organisation else None
 
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        # override "documents" on the way OUT with the nested representation
+        rep["documents"] = DocumentFileSerializer(
+            instance.documents.all(), many=True
+        ).data
+        return rep
+
     def validate(self, attrs):
         user = self.context["request"].user
 
@@ -380,12 +397,31 @@ class MaintenanceRequestSerializer(serializers.ModelSerializer):
                 )
         return attrs
 
+    def create(self, validated_data):
+        new_files = validated_data.pop("documents", [])
+        instance = super().create(validated_data)
+        for f in new_files:
+            doc = DocumentFile.objects.create(file=f)
+            instance.documents.add(doc)
+        return instance
+
     def update(self, instance, validated_data):
-        for field in (
-            "tenant",
-            "property",
-            "organisation",
-        ):
+        for field in ("tenant", "property", "organisation"):
             validated_data.pop(field, None)
 
-        return super().update(instance, validated_data)
+        new_files = validated_data.pop("documents", [])
+        removed_ids = validated_data.pop("removed_document_ids", [])
+
+        with transaction.atomic():
+            instance = super().update(instance, validated_data)
+
+            if removed_ids:
+                docs_to_remove = instance.documents.filter(id__in=removed_ids)
+                instance.documents.remove(*docs_to_remove)
+                docs_to_remove.delete()
+
+            for f in new_files:
+                doc = DocumentFile.objects.create(file=f)
+                instance.documents.add(doc)
+
+        return instance
