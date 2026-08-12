@@ -1,8 +1,12 @@
-from rest_framework.permissions import BasePermission
+from rest_framework.permissions import BasePermission, SAFE_METHODS
 from apps.authentication.models import User
 from apps.organisation.enums import OrganisationRoleChoices
 from apps.organisation.models import OrganisationUser
-from apps.property.models import Tenant
+from apps.property.models import (
+    Tenant,
+    MortgageAdviserPropertyPermission,
+    MortgageAdviserMortgagePermission,
+)
 
 
 class IsTenant(BasePermission):
@@ -32,3 +36,39 @@ class IsMortgageAdviser(BasePermission):
             user=request.user,
             role=OrganisationRoleChoices.MORTGAGE_ADVISER,
         ).exists()
+
+
+class CanAccessMortgageAdviserProperty(BasePermission):
+    message = "You do not have permission to access this property."
+
+    def has_object_permission(self, request, view, obj):
+        permission = MortgageAdviserPropertyPermission.objects.filter(
+            mortgage_adviser=request.user,
+            property=obj,
+        ).first()
+
+        if not permission:
+            return False
+
+        if request.method in SAFE_METHODS:
+            return permission.can_view
+
+        return permission.can_edit
+
+
+class CanAccessMortgageAdviserMortgage(BasePermission):
+    message = "You do not have permission to access this mortgage."
+
+    def has_object_permission(self, request, view, obj):
+        permission = MortgageAdviserMortgagePermission.objects.filter(
+            mortgage_adviser=request.user,
+            mortgage=obj,
+        ).first()
+
+        if not permission:
+            return False
+
+        if request.method in SAFE_METHODS:
+            return permission.can_view
+
+        return permission.can_edit

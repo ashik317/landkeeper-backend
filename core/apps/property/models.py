@@ -4,6 +4,7 @@ from apps.organisation.models import Organisation
 from apps.authentication.enums import NameTitleChoices
 from common.models import CreatedAtUpdatedAtBaseModel, Media, DocumentFile
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from .enums import (
     PropertyType,
     CertificateType,
@@ -17,6 +18,8 @@ from .enums import (
 )
 from .managers import ApplicantManager
 from .utils import certificate_file_upload_path, tenant_avatar_upload_path
+
+User = get_user_model()
 
 
 class Property(CreatedAtUpdatedAtBaseModel):
@@ -67,7 +70,6 @@ class Property(CreatedAtUpdatedAtBaseModel):
         Media, blank=True, related_name="property_documents"
     )
     notes = models.TextField(blank=True, null=True)
-    is_visible_mortgage_adviser = models.BooleanField(default=False)
 
     # Fk
     organisation = models.ForeignKey(
@@ -136,7 +138,6 @@ class Mortgage(CreatedAtUpdatedAtBaseModel):
     mortgage_documents = models.ManyToManyField(
         DocumentFile, blank=True, related_name="mortgages"
     )
-    is_visible_mortgage_adviser = models.BooleanField(default=False)
 
     # FK
     property = models.ForeignKey(
@@ -296,3 +297,49 @@ class Finance(CreatedAtUpdatedAtBaseModel):
 
     def __str__(self):
         return f"Finance - {self.type}"
+
+
+class MortgageAdviserPropertyPermission(CreatedAtUpdatedAtBaseModel):
+    mortgage_adviser = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="property_permissions",
+    )
+    property = models.ForeignKey(
+        Property,
+        on_delete=models.CASCADE,
+        related_name="mortgage_adviser_permissions",
+    )
+    can_view = models.BooleanField(default=False)
+    can_edit = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["mortgage_adviser", "property"],
+                name="unique_mortgage_adviser_property_permission",
+            )
+        ]
+
+
+class MortgageAdviserMortgagePermission(CreatedAtUpdatedAtBaseModel):
+    mortgage_adviser = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="mortgage_permissions",
+    )
+    mortgage = models.ForeignKey(
+        Mortgage,
+        on_delete=models.CASCADE,
+        related_name="mortgage_adviser_permissions",
+    )
+    can_view = models.BooleanField(default=False)
+    can_edit = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["mortgage_adviser", "mortgage"],
+                name="unique_mortgage_adviser_mortgage_permission",
+            )
+        ]

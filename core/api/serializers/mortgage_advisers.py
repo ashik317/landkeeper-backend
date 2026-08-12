@@ -8,6 +8,8 @@ from apps.property.models import (
     Media,
     Mortgage,
     DocumentFile,
+    MortgageAdviserPropertyPermission,
+    MortgageAdviserMortgagePermission,
 )
 from apps.organisation.enums import OrganisationRoleChoices
 from apps.property.enums import PropertyOwnerType
@@ -21,30 +23,20 @@ from common.serializers import (
 
 class MortgageAdviserPropertyPermissionSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Property
+        model = MortgageAdviserPropertyPermission
         fields = [
-            "id",
-            "alias",
-            "property_name",
-            "property_type",
-            "is_visible_mortgage_adviser",
+            "can_view",
+            "can_edit",
         ]
-        read_only_fields = ["id", "alias", "property_name", "property_type"]
 
 
 class MortgageAdviserMortgagePermissionSerializer(serializers.ModelSerializer):
-    property = serializers.CharField(source="property.property_name", read_only=True)
-
     class Meta:
-        model = Mortgage
+        model = MortgageAdviserMortgagePermission
         fields = [
-            "id",
-            "alias",
-            "property",
-            "lender_name",
-            "is_visible_mortgage_adviser",
+            "can_view",
+            "can_edit",
         ]
-        read_only_fields = ["id", "alias", "property", "lender_name"]
 
 
 class PropertyOwnershipSerializer(serializers.ModelSerializer):
