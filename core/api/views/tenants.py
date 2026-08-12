@@ -975,8 +975,6 @@ class MaintenanceRequestRetrieveUpdateDestroyAPIView(RetrieveUpdateDestroyAPIVie
     lookup_field = "alias"
 
     def get_permissions(self):
-        if self.request.method == "DELETE":
-            return [IsTenant()]
         return [(IsTenant | IsLandlord)()]
 
     def get_queryset(self):
