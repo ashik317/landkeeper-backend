@@ -973,11 +973,7 @@ class MaintenanceRequestListCreateAPIView(ListCreateAPIView):
 class MaintenanceRequestRetrieveUpdateDestroyAPIView(RetrieveUpdateDestroyAPIView):
     serializer_class = MaintenanceRequestSerializer
     lookup_field = "alias"
-
-    def get_permissions(self):
-        if self.request.method == "DELETE":
-            return [IsTenant()]
-        return [(IsTenant | IsLandlord)()]
+    permission_classes = [IsTenant|IsLandlord]
 
     def get_queryset(self):
         user = self.request.user
