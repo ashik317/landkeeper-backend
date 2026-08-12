@@ -84,7 +84,7 @@ from apps.tenant.utils import get_statement_date_range
 from common.models import DocumentFile
 from common.permission import (
     IsTenant,
-    IsLandlord
+    IsLandlord, IsAdmin
 )
 
 logger = logging.getLogger("apps.tenant.payments")
@@ -928,7 +928,7 @@ class MaintenanceRequestListCreateAPIView(ListCreateAPIView):
     def get_permissions(self):
         if self.request.method == "POST":
             return [IsTenant()]
-        return [(IsTenant | IsLandlord)()]
+        return [(IsTenant | IsLandlord |IsAdmin)()]
 
     def get_queryset(self):
         user = self.request.user
@@ -973,7 +973,7 @@ class MaintenanceRequestListCreateAPIView(ListCreateAPIView):
 class MaintenanceRequestRetrieveUpdateDestroyAPIView(RetrieveUpdateDestroyAPIView):
     serializer_class = MaintenanceRequestSerializer
     lookup_field = "alias"
-    permission_classes = [IsTenant|IsLandlord]
+    permission_classes = [IsTenant|IsLandlord|IsAdmin]
 
     def get_queryset(self):
         user = self.request.user
