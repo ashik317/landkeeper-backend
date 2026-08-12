@@ -10,6 +10,8 @@ import stripe
 from datetime import date, timedelta
 from django.conf import settings
 from django.db import IntegrityError, transaction
+from django.db.models import Value, CharField
+from django.db.models.functions import Cast, Concat, LPad
 from django.http import FileResponse
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -902,12 +904,17 @@ class PaymentHistoryView(APIView):
 
 class MaintenanceRequestListCreateAPIView(ListCreateAPIView):
     serializer_class = MaintenanceRequestSerializer
+    filter_backends = [
+        DjangoFilterBackend,
+        SearchFilter,
+    ]
     filterset_fields = [
         "is_emergency",
         "current_status",
         "category",
     ]
     search_fields = [
+        "request_id",
         "property__property_name",
         "property__company_name",
         "tenant__title",
@@ -926,13 +933,21 @@ class MaintenanceRequestListCreateAPIView(ListCreateAPIView):
     def get_queryset(self):
         user = self.request.user
         if isinstance(user, Tenant):
-            return MaintenanceRequest.objects.filter(tenant=user)
+            queryset = MaintenanceRequest.objects.filter(tenant=user)
+        else:
+            organisation = user.get_organisation()
+            if organisation:
+                queryset = MaintenanceRequest.objects.filter(organisation=organisation)
+            else:
+                return MaintenanceRequest.objects.none()
 
-        organisation = user.get_organisation()
-        if organisation:
-            return MaintenanceRequest.objects.filter(organisation=organisation)
-
-        return MaintenanceRequest.objects.none()
+        return queryset.annotate(
+            request_id=Concat(
+                Value("#MR-"),
+                LPad(Cast("id", CharField()), 8, Value("0")),
+                output_field=CharField(),
+            )
+        )
 
     def perform_create(self, serializer):
         tenant = self.request.user
