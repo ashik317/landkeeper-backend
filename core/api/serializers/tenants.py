@@ -370,9 +370,8 @@ class MaintenanceRequestSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         rep = super().to_representation(instance)
-        # override "documents" on the way OUT with the nested representation
         rep["documents"] = DocumentFileSerializer(
-            instance.documents.all(), many=True
+            instance.documents.all(), many=True, context=self.context
         ).data
         return rep
 
