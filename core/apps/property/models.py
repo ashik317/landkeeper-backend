@@ -24,11 +24,9 @@ class Property(CreatedAtUpdatedAtBaseModel):
     property_owner = models.CharField(
         max_length=64,
         choices=PropertyOwnerType.choices,
-        default=PropertyOwnerType.OWNER
+        default=PropertyOwnerType.OWNER,
     )
-    company_name = models.CharField(
-        max_length=64, null=True, blank=True
-    )
+    company_name = models.CharField(max_length=64, null=True, blank=True)
     property_type = models.CharField(
         max_length=20,
         choices=PropertyType.choices,
@@ -49,10 +47,7 @@ class Property(CreatedAtUpdatedAtBaseModel):
     purchase_date = models.DateField(blank=True, null=True)
     year_built = models.PositiveIntegerField(blank=True, null=True)
     property_tenure = models.CharField(
-        max_length=64,
-        choices=PropertyTenureType.choices,
-        null=True,
-        blank=True
+        max_length=64, choices=PropertyTenureType.choices, null=True, blank=True
     )
     remaining_lease_term = models.PositiveIntegerField(blank=True, null=True)
     monthly_service_charge = models.DecimalField(
@@ -66,20 +61,13 @@ class Property(CreatedAtUpdatedAtBaseModel):
     monthly_rental_income = models.DecimalField(
         max_digits=10, decimal_places=2, blank=True, null=True
     )
-    council_tax_band = models.CharField(
-        max_length=64,
-        null=True,
-        blank=True
-    )
-    local_authority = models.CharField(
-        max_length=64,
-        null=True,
-        blank=True
-    )
+    council_tax_band = models.CharField(max_length=64, null=True, blank=True)
+    local_authority = models.CharField(max_length=64, null=True, blank=True)
     documents = models.ManyToManyField(
         Media, blank=True, related_name="property_documents"
     )
     notes = models.TextField(blank=True, null=True)
+    is_visible_mortgage_adviser = models.BooleanField(default=False)
 
     # Fk
     organisation = models.ForeignKey(
@@ -94,6 +82,7 @@ class Property(CreatedAtUpdatedAtBaseModel):
         return (
             self.mortgages.filter(end_date__isnull=True).order_by("-start_date").first()
         )
+
 
 class PropertyOwnership(CreatedAtUpdatedAtBaseModel):
     property = models.ForeignKey(
@@ -117,6 +106,7 @@ class PropertyOwnership(CreatedAtUpdatedAtBaseModel):
         null=True,
         blank=True,
     )
+
     class Meta:
         ordering = ["id"]
 
@@ -127,10 +117,7 @@ class PropertyOwnership(CreatedAtUpdatedAtBaseModel):
 class Mortgage(CreatedAtUpdatedAtBaseModel):
     lender_name = models.CharField(max_length=255)
     interest_rate_type = models.CharField(
-        max_length=50,
-        choices=ProductType.choices,
-        null=True,
-        blank=True
+        max_length=50, choices=ProductType.choices, null=True, blank=True
     )
     interest_rate = models.DecimalField(
         max_digits=5, decimal_places=2, blank=True, null=True
@@ -144,11 +131,12 @@ class Mortgage(CreatedAtUpdatedAtBaseModel):
     )
     remaining_mortgage = models.PositiveIntegerField(blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
-    epc_rating = models.CharField( max_length=10, blank=True, null=True)
+    epc_rating = models.CharField(max_length=10, blank=True, null=True)
     epc_certificate_expiry_date = models.DateField(blank=True, null=True)
     mortgage_documents = models.ManyToManyField(
         DocumentFile, blank=True, related_name="mortgages"
     )
+    is_visible_mortgage_adviser = models.BooleanField(default=False)
 
     # FK
     property = models.ForeignKey(

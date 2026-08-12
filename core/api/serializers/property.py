@@ -5,7 +5,6 @@ from django.contrib.auth.hashers import make_password
 import re
 from rest_framework import serializers
 from apps.organisation.enums import OrganisationRoleChoices
-from apps.organisation.models import OrganisationUser
 from apps.property.enums import PropertyOwnerType
 from apps.property.models import (
     Property,
@@ -47,7 +46,11 @@ class PropertyOwnershipSerializer(serializers.ModelSerializer):
         ]
         extra_kwargs = {
             "owner_name": {"required": False, "allow_null": True, "allow_blank": True},
-            "shareholder_name": {"required": False, "allow_null": True, "allow_blank": True},
+            "shareholder_name": {
+                "required": False,
+                "allow_null": True,
+                "allow_blank": True,
+            },
             "share_percentage": {"required": False, "allow_null": True},
         }
 
@@ -63,15 +66,13 @@ class PropertyOwnershipSerializer(serializers.ModelSerializer):
 
         return rep
 
+
 class PropertySerializer(serializers.ModelSerializer):
     documents_data = serializers.ListField(
         child=serializers.ImageField(), required=False, write_only=True
     )
     documents = MediaSerializer(many=True, read_only=True)
-    shareholder = PropertyOwnershipSerializer(
-        many=True,
-        required=False
-    )
+    shareholder = PropertyOwnershipSerializer(many=True, required=False)
     landlord = serializers.SerializerMethodField()
 
     class Meta:
@@ -115,8 +116,7 @@ class PropertySerializer(serializers.ModelSerializer):
 
     def get_landlord(self, obj):
         organisation_user = (
-            obj.organisation.organisation_users
-            .select_related("user")
+            obj.organisation.organisation_users.select_related("user")
             .filter(role=OrganisationRoleChoices.LANDLORD)
             .first()
         )
@@ -147,7 +147,11 @@ class PropertySerializer(serializers.ModelSerializer):
                 for owner in shareholder:
                     if owner.get("share_percentage") in (None, ""):
                         raise serializers.ValidationError(
-                            {"shareholder": ["share_percentage is required when property_owner is COMPANY."]}
+                            {
+                                "shareholder": [
+                                    "share_percentage is required when property_owner is COMPANY."
+                                ]
+                            }
                         )
                     owner["owner_name"] = None
             elif property_owner == PropertyOwnerType.OWNER:
@@ -158,6 +162,7 @@ class PropertySerializer(serializers.ModelSerializer):
         return attrs
 
     MULTI_VALUE_FIELDS = {"documents_data"}
+
     def to_internal_value(self, data):
         if hasattr(data, "getlist"):
             plain_data = {}
@@ -178,17 +183,19 @@ class PropertySerializer(serializers.ModelSerializer):
             share_percentage_key = f"shareholder[{index}].share_percentage"
 
             if (
-                    owner_name_key not in plain_data
-                    and shareholder_name_key not in plain_data
-                    and share_percentage_key not in plain_data
+                owner_name_key not in plain_data
+                and shareholder_name_key not in plain_data
+                and share_percentage_key not in plain_data
             ):
                 break
 
-            shareholder.append({
-                "owner_name": plain_data.pop(owner_name_key, None),
-                "shareholder_name": plain_data.pop(shareholder_name_key, None),
-                "share_percentage": plain_data.pop(share_percentage_key, None),
-            })
+            shareholder.append(
+                {
+                    "owner_name": plain_data.pop(owner_name_key, None),
+                    "shareholder_name": plain_data.pop(shareholder_name_key, None),
+                    "share_percentage": plain_data.pop(share_percentage_key, None),
+                }
+            )
             index += 1
 
         if shareholder:
@@ -232,6 +239,7 @@ class PropertySerializer(serializers.ModelSerializer):
                 PropertyOwnership.objects.create(property=instance, **owner)
 
         return instance
+
 
 class MortgageSerializers(serializers.ModelSerializer):
     mortgage_documents = serializers.ListField(
@@ -665,7 +673,11 @@ class PropertyOnboardingSerializer(serializers.Serializer):
 
             serializer_class = self.STEP_SERIALIZERS[step_name]
             payload = dict(validated_data[step_name])
-            print(f"[{step_name}] documents_data present:", "documents_data" in payload, payload.get("documents_data"))
+            print(
+                f"[{step_name}] documents_data present:",
+                "documents_data" in payload,
+                payload.get("documents_data"),
+            )
 
             if step_name != "property":
                 if property_obj is None:
