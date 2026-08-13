@@ -354,6 +354,7 @@ class TenantSerializer(serializers.ModelSerializer):
             "is_active",
             "is_password_set",
             "property",
+            "created_at",
         ]
         read_only_fields = [
             "alias",
