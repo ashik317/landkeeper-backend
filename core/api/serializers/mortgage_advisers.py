@@ -20,6 +20,35 @@ from common.serializers import (
     DocumentFileSlimSerializer,
 )
 
+class MortgageAdviserPropertyPermissionSlimSerializer(serializers.ModelSerializer):
+    property = serializers.UUIDField(source="property.alias", read_only=True)
+    mortgage_adviser = serializers.UUIDField(
+        source="mortgage_adviser.alias", read_only=True
+    )
+
+    class Meta:
+        model = MortgageAdviserPropertyPermission
+        fields = [
+            "mortgage_adviser",
+            "property",
+            "can_view",
+            "can_edit",
+        ]
+
+class MortgageAdviserMortgagePermissionSlimSerializer(serializers.ModelSerializer):
+    mortgage = serializers.UUIDField(source="mortgage.alias", read_only=True)
+    mortgage_adviser = serializers.UUIDField(
+        source="mortgage_adviser.alias", read_only=True
+    )
+
+    class Meta:
+        model = MortgageAdviserMortgagePermission
+        fields = [
+            "mortgage_adviser",
+            "mortgage",
+            "can_view",
+            "can_edit",
+        ]
 
 class MortgageAdviserPropertyPermissionSerializer(serializers.ModelSerializer):
     class Meta:

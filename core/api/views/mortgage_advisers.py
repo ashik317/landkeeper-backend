@@ -21,6 +21,8 @@ from ..serializers.mortgage_advisers import (
     MortgageAdviserMortgagePermissionSerializer,
     MortgageAdviserPropertySerializer,
     MortgageAdviserMortgageSerializers,
+    MortgageAdviserPropertyPermissionSlimSerializer,
+    MortgageAdviserMortgagePermissionSlimSerializer,
 )
 
 from common.permission import (
@@ -31,6 +33,25 @@ from common.permission import (
 )
 
 User = get_user_model()
+
+class MortgageAdviserPropertyPermissionListAPIView(ListAPIView):
+    permission_classes = [IsLandlord]
+    serializer_class = MortgageAdviserPropertyPermissionSlimSerializer
+
+    def get_queryset(self):
+        organisation = self.request.user.get_organisation()
+
+        if not organisation:
+            raise NotFound("Organisation not found for the user.")
+
+        adviser_ids = OrganisationUser.objects.filter(
+            organisation=organisation,
+            role=OrganisationRoleChoices.MORTGAGE_ADVISER,
+        ).values_list("user_id", flat=True)
+
+        return MortgageAdviserPropertyPermission.objects.filter(
+            mortgage_adviser_id__in=adviser_ids,
+        ).select_related("property", "mortgage_adviser")
 
 
 class MortgageAdviserPropertyPermissionView(RetrieveUpdateAPIView):
@@ -101,6 +122,24 @@ class MortgageAdviserPropertyPermissionView(RetrieveUpdateAPIView):
             status=status.HTTP_200_OK,
         )
 
+class MortgageAdviserMortgagePermissionListAPIView(ListAPIView):
+    permission_classes = [IsLandlord]
+    serializer_class = MortgageAdviserMortgagePermissionSlimSerializer
+
+    def get_queryset(self):
+        organisation = self.request.user.get_organisation()
+
+        if not organisation:
+            raise NotFound("Organisation not found for the user.")
+
+        adviser_ids = OrganisationUser.objects.filter(
+            organisation=organisation,
+            role=OrganisationRoleChoices.MORTGAGE_ADVISER,
+        ).values_list("user_id", flat=True)
+
+        return MortgageAdviserMortgagePermission.objects.filter(
+            mortgage_adviser_id__in=adviser_ids,
+        ).select_related("mortgage", "mortgage_adviser")
 
 class MortgageAdviserMortgagePermissionView(RetrieveUpdateAPIView):
     permission_classes = [IsLandlord]

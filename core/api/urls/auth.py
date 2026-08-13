@@ -17,6 +17,7 @@ from api.views.auth import (
     ResendInviteView,
     TenantSendInviteView,
     TenantAcceptInviteView,
+    OrganisationUserListAPIView,
 )
 
 urlpatterns = [
@@ -45,4 +46,5 @@ urlpatterns = [
     path("/invites/<uuid:alias>", DeleteInviteView.as_view(), name="delete-invite"),
     path("/tenants/<uuid:tenant_alias>/send-invite", TenantSendInviteView.as_view(), name="tenant_send-invite"),
     path("/tenants/<uuid:tenant_alias>/accept-invite", TenantAcceptInviteView.as_view(), name="tenant-accept-invite"),
+    path("/users", OrganisationUserListAPIView.as_view(), name="organisation-user-list"),
 ]
