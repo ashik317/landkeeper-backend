@@ -178,6 +178,7 @@ class Tenant(AbstractBaseUser, CreatedAtUpdatedAtBaseModel):
     employment_details = models.TextField(blank=True, null=True)
     guarantor_name = models.CharField(max_length=128, blank=True, null=True)
     is_active = models.BooleanField(default=False)
+    is_password_set = models.BooleanField(default=False)
     notes = models.TextField(blank=True, null=True)
     is_staff = False
     is_superuser = False

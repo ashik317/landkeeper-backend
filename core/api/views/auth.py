@@ -284,6 +284,10 @@ class SetForgotPasswordView(APIView):
             )
 
         user.set_password(new_password)
+
+        if isinstance(user, Tenant):
+            user.is_password_set = True
+
         user.save()
         return Response(
             {"detail": "Password has been reset successfully."},

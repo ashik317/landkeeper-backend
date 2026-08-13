@@ -21,6 +21,8 @@ from ..serializers.mortgage_advisers import (
     MortgageAdviserMortgagePermissionSerializer,
     MortgageAdviserPropertySerializer,
     MortgageAdviserMortgageSerializers,
+    MortgageAdviserPropertyPermissionSlimSerializer,
+    MortgageAdviserMortgagePermissionSlimSerializer,
 )
 
 from common.permission import (
@@ -34,43 +36,23 @@ User = get_user_model()
 
 class MortgageAdviserPropertyPermissionListAPIView(ListAPIView):
     permission_classes = [IsLandlord]
-    serializer_class = MortgageAdviserPropertyPermissionSerializer
+    serializer_class = MortgageAdviserPropertyPermissionSlimSerializer
 
-    def get_adviser(self):
+    def get_queryset(self):
         organisation = self.request.user.get_organisation()
 
         if not organisation:
             raise NotFound("Organisation not found for the user.")
 
-        adviser = get_object_or_404(
-            User,
-            alias=self.kwargs["adviser_alias"],
-        )
-
-        is_mortgage_adviser = OrganisationUser.objects.filter(
-            user=adviser,
+        adviser_ids = OrganisationUser.objects.filter(
             organisation=organisation,
             role=OrganisationRoleChoices.MORTGAGE_ADVISER,
-        ).exists()
+        ).values_list("user_id", flat=True)
 
-        if not is_mortgage_adviser:
-            raise ValidationError(
-                "The selected user is not a mortgage adviser in this organisation."
-            )
+        return MortgageAdviserPropertyPermission.objects.filter(
+            mortgage_adviser_id__in=adviser_ids,
+        ).select_related("property", "mortgage_adviser")
 
-        return adviser
-
-    def get_queryset(self):
-        adviser = self.get_adviser()
-        organisation = self.request.user.get_organisation()
-
-        return (
-            MortgageAdviserPropertyPermission.objects.filter(
-                mortgage_adviser=adviser,
-                property__organisation=organisation,
-            )
-            .select_related("property", "mortgage_adviser")
-        )
 
 class MortgageAdviserPropertyPermissionView(RetrieveUpdateAPIView):
     permission_classes = [IsLandlord]
@@ -142,43 +124,22 @@ class MortgageAdviserPropertyPermissionView(RetrieveUpdateAPIView):
 
 class MortgageAdviserMortgagePermissionListAPIView(ListAPIView):
     permission_classes = [IsLandlord]
-    serializer_class = MortgageAdviserMortgagePermissionSerializer
+    serializer_class = MortgageAdviserMortgagePermissionSlimSerializer
 
-    def get_adviser(self):
+    def get_queryset(self):
         organisation = self.request.user.get_organisation()
 
         if not organisation:
             raise NotFound("Organisation not found for the user.")
 
-        adviser = get_object_or_404(
-            User,
-            alias=self.kwargs["adviser_alias"],
-        )
-
-        is_mortgage_adviser = OrganisationUser.objects.filter(
-            user=adviser,
+        adviser_ids = OrganisationUser.objects.filter(
             organisation=organisation,
             role=OrganisationRoleChoices.MORTGAGE_ADVISER,
-        ).exists()
+        ).values_list("user_id", flat=True)
 
-        if not is_mortgage_adviser:
-            raise ValidationError(
-                "The selected user is not a mortgage adviser in this organisation."
-            )
-
-        return adviser
-
-    def get_queryset(self):
-        adviser = self.get_adviser()
-        organisation = self.request.user.get_organisation()
-
-        return (
-            MortgageAdviserMortgagePermission.objects.filter(
-                mortgage_adviser=adviser,
-                mortgage__organisation=organisation,
-            )
-            .select_related("mortgage", "mortgage_adviser")
-        )
+        return MortgageAdviserMortgagePermission.objects.filter(
+            mortgage_adviser_id__in=adviser_ids,
+        ).select_related("mortgage", "mortgage_adviser")
 
 class MortgageAdviserMortgagePermissionView(RetrieveUpdateAPIView):
     permission_classes = [IsLandlord]

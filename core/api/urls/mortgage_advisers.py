@@ -13,7 +13,7 @@ from ..views.mortgage_advisers import (
 
 urlpatterns = [
     path(
-        "/<uuid:adviser_alias>/property/permissions",
+        "/property/permissions",
         MortgageAdviserPropertyPermissionListAPIView.as_view(),
         name="mortgage-adviser-property-permissions-list",
     ),
@@ -23,10 +23,10 @@ urlpatterns = [
         name="mortgage-adviser-property-permissions",
     ),
     path(
-    "/<uuid:adviser_alias>/mortgage/permissions",
+    "/mortgage/permissions",
         MortgageAdviserMortgagePermissionListAPIView.as_view(),
         name="mortgage-adviser-mortgage-permissions-list",
-),
+    ),
     path(
         "/<uuid:adviser_alias>/mortgage/<uuid:mortgage_alias>/permissions",
         MortgageAdviserMortgagePermissionView.as_view(),

@@ -332,7 +332,6 @@ class MortgageSerializers(serializers.ModelSerializer):
 
 
 class TenantSerializer(serializers.ModelSerializer):
-    is_password_set = serializers.BooleanField(default=False)
     class Meta:
         model = Tenant
         fields = [
@@ -353,12 +352,31 @@ class TenantSerializer(serializers.ModelSerializer):
             "guarantor_name",
             "notes",
             "is_active",
-            "property",
             "is_password_set",
+            "property",
         ]
         read_only_fields = [
             "alias",
         ]
+
+    def validate_email(self, value):
+        request = self.context.get("request")
+        organisation = request.user.get_organisation() if request else None
+
+        if not organisation:
+            raise serializers.ValidationError("Organisation not found for the user.")
+
+        queryset = Tenant.objects.filter(organisation=organisation, email=value)
+
+        if self.instance:
+            queryset = queryset.exclude(pk=self.instance.pk)
+
+        if queryset.exists():
+            raise serializers.ValidationError(
+                "A tenant with this email already exists in your organisation."
+            )
+
+        return value
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
