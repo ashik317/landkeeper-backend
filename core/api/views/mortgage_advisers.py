@@ -44,13 +44,8 @@ class MortgageAdviserPropertyPermissionListAPIView(ListAPIView):
         if not organisation:
             raise NotFound("Organisation not found for the user.")
 
-        adviser_ids = OrganisationUser.objects.filter(
-            organisation=organisation,
-            role=OrganisationRoleChoices.MORTGAGE_ADVISER,
-        ).values_list("user_id", flat=True)
-
         return MortgageAdviserPropertyPermission.objects.filter(
-            mortgage_adviser_id__in=adviser_ids,
+            organisation=organisation,
         ).select_related("property", "mortgage_adviser")
 
 
@@ -58,24 +53,22 @@ class MortgageAdviserPropertyPermissionView(RetrieveUpdateAPIView):
     permission_classes = [IsLandlord]
     serializer_class = MortgageAdviserPropertyPermissionSerializer
 
-    def get_property(self):
+    def get_organisation(self):
         organisation = self.request.user.get_organisation()
 
         if not organisation:
             raise NotFound("Organisation not found for the user.")
 
+        return organisation
+
+    def get_property(self, organisation):
         return get_object_or_404(
             Property,
             alias=self.kwargs["property_alias"],
             organisation=organisation,
         )
 
-    def get_mortgage_adviser(self):
-        organisation = self.request.user.get_organisation()
-
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
-
+    def get_mortgage_adviser(self, organisation):
         adviser = get_object_or_404(
             User,
             alias=self.kwargs["adviser_alias"],
@@ -89,18 +82,20 @@ class MortgageAdviserPropertyPermissionView(RetrieveUpdateAPIView):
 
         if not is_mortgage_adviser:
             raise ValidationError(
-                "The selected user is not a mortgage adviser " "in this organisation."
+                "The selected user is not a mortgage adviser in this organisation."
             )
 
         return adviser
 
     def get_object(self):
-        property_obj = self.get_property()
-        adviser = self.get_mortgage_adviser()
+        organisation = self.get_organisation()
+        property_obj = self.get_property(organisation)
+        adviser = self.get_mortgage_adviser(organisation)
 
         permission, _ = MortgageAdviserPropertyPermission.objects.get_or_create(
             mortgage_adviser=adviser,
             property=property_obj,
+            organisation=organisation,
         )
 
         return permission
@@ -132,37 +127,32 @@ class MortgageAdviserMortgagePermissionListAPIView(ListAPIView):
         if not organisation:
             raise NotFound("Organisation not found for the user.")
 
-        adviser_ids = OrganisationUser.objects.filter(
-            organisation=organisation,
-            role=OrganisationRoleChoices.MORTGAGE_ADVISER,
-        ).values_list("user_id", flat=True)
-
         return MortgageAdviserMortgagePermission.objects.filter(
-            mortgage_adviser_id__in=adviser_ids,
+            organisation=organisation,
         ).select_related("mortgage", "mortgage_adviser")
+
+
 
 class MortgageAdviserMortgagePermissionView(RetrieveUpdateAPIView):
     permission_classes = [IsLandlord]
     serializer_class = MortgageAdviserMortgagePermissionSerializer
 
-    def get_mortgage(self):
+    def get_organisation(self):
         organisation = self.request.user.get_organisation()
 
         if not organisation:
             raise NotFound("Organisation not found for the user.")
 
+        return organisation
+
+    def get_mortgage(self, organisation):
         return get_object_or_404(
             Mortgage,
             alias=self.kwargs["mortgage_alias"],
             organisation=organisation,
         )
 
-    def get_mortgage_adviser(self):
-        organisation = self.request.user.get_organisation()
-
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
-
+    def get_mortgage_adviser(self, organisation):
         adviser = get_object_or_404(
             User,
             alias=self.kwargs["adviser_alias"],
@@ -176,18 +166,20 @@ class MortgageAdviserMortgagePermissionView(RetrieveUpdateAPIView):
 
         if not is_mortgage_adviser:
             raise ValidationError(
-                "The selected user is not a mortgage adviser " "in this organisation."
+                "The selected user is not a mortgage adviser in this organisation."
             )
 
         return adviser
 
     def get_object(self):
-        mortgage = self.get_mortgage()
-        adviser = self.get_mortgage_adviser()
+        organisation = self.get_organisation()
+        mortgage = self.get_mortgage(organisation)
+        adviser = self.get_mortgage_adviser(organisation)
 
         permission, _ = MortgageAdviserMortgagePermission.objects.get_or_create(
             mortgage_adviser=adviser,
             mortgage=mortgage,
+            organisation=organisation,
         )
 
         return permission

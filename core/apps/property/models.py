@@ -311,13 +311,18 @@ class MortgageAdviserPropertyPermission(CreatedAtUpdatedAtBaseModel):
         on_delete=models.CASCADE,
         related_name="mortgage_adviser_permissions",
     )
+    organisation = models.ForeignKey(
+        Organisation,
+        on_delete=models.CASCADE,
+        related_name="organisation_property_permissions",
+    )
     can_view = models.BooleanField(default=False)
     can_edit = models.BooleanField(default=False)
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["mortgage_adviser", "property"],
+                fields=["mortgage_adviser", "property", "organisation"],
                 name="unique_mortgage_adviser_property_permission",
             )
         ]
@@ -334,13 +339,18 @@ class MortgageAdviserMortgagePermission(CreatedAtUpdatedAtBaseModel):
         on_delete=models.CASCADE,
         related_name="mortgage_adviser_permissions",
     )
+    organisation = models.ForeignKey(
+        Organisation,
+        on_delete=models.CASCADE,
+        related_name="organisation_mortgage_permissions",
+    )
     can_view = models.BooleanField(default=False)
     can_edit = models.BooleanField(default=False)
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["mortgage_adviser", "mortgage"],
+                fields=["mortgage_adviser", "mortgage", "organisation"],
                 name="unique_mortgage_adviser_mortgage_permission",
             )
         ]
