@@ -1,6 +1,6 @@
 from datetime import timedelta
-from django.core.mail import send_mail
 from django.utils import timezone
+from rest_framework.exceptions import ValidationError
 from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 from allauth.socialaccount.providers.oauth2.client import OAuth2Client
 from django.contrib.auth.tokens import default_token_generator
@@ -23,12 +23,15 @@ from django.http import HttpResponseRedirect
 from django.conf import settings
 from rest_framework import status
 from rest_framework.views import APIView
-from rest_framework.generics import CreateAPIView, RetrieveUpdateAPIView
+from rest_framework.generics import CreateAPIView, RetrieveUpdateAPIView, ListAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from apps.authentication.signals import create_default_organisation
+from apps.organisation.enums import OrganisationRoleChoices
+from apps.organisation.models import OrganisationUser
 from apps.property.models import Tenant
 from common.permission import IsLandlord
+from api.serializers.organisation import OrganisationUserSerializer
 from ..serializers.auth import (
     UserRegistrationSerializer,
     UserProfileSerializer,
@@ -543,4 +546,27 @@ class TenantAcceptInviteView(APIView):
                 "message": "Account created successfully. You can now log in.",
             },
             status=status.HTTP_201_CREATED,
+        )
+
+class OrganisationUserListAPIView(ListAPIView):
+    serializer_class = OrganisationUserSerializer
+
+    def get_queryset(self):
+        organisation = self.request.user.get_organisation()
+        if not organisation:
+            return OrganisationUser.objects.none()
+
+        role = self.request.query_params.get("role")
+        if not role:
+            raise ValidationError({"role": "This query parameter is required."})
+
+        valid_roles = OrganisationRoleChoices.values
+        if role not in valid_roles:
+            raise ValidationError(
+                {"role": f"Invalid role. Must be one of {valid_roles}."}
+            )
+
+        return (
+            OrganisationUser.objects.filter(organisation=organisation, role=role)
+            .select_related("user")
         )

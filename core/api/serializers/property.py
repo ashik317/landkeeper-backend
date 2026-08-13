@@ -332,6 +332,7 @@ class MortgageSerializers(serializers.ModelSerializer):
 
 
 class TenantSerializer(serializers.ModelSerializer):
+    is_password_set = serializers.BooleanField(default=False)
     class Meta:
         model = Tenant
         fields = [
@@ -353,6 +354,7 @@ class TenantSerializer(serializers.ModelSerializer):
             "notes",
             "is_active",
             "property",
+            "is_password_set",
         ]
         read_only_fields = [
             "alias",
