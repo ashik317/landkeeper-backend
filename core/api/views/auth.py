@@ -573,6 +573,7 @@ class TenantAcceptInviteView(APIView):
 
 class OrganisationUserListAPIView(ListAPIView):
     serializer_class = OrganisationUserSerializer
+    pagination_class = None
 
     def get_queryset(self):
         organisation = self.request.user.get_organisation()
