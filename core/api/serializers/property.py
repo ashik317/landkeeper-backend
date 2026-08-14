@@ -1,9 +1,11 @@
 import os
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError
 from django.contrib.auth.hashers import make_password
 import re
 from rest_framework import serializers
+from apps.authentication.models import InviteUser
 from apps.organisation.enums import OrganisationRoleChoices
 from apps.property.enums import PropertyOwnerType
 from apps.property.models import (
@@ -18,6 +20,8 @@ from apps.property.models import (
 from common.models import Media, DocumentFile
 from common.serializers import PropertySlimSerializer
 from django.db import transaction
+
+User = get_user_model()
 
 
 class MediaSerializer(serializers.ModelSerializer):
@@ -362,20 +366,31 @@ class TenantSerializer(serializers.ModelSerializer):
 
     def validate_email(self, value):
         request = self.context.get("request")
-        organisation = request.user.get_organisation() if request else None
+        user = getattr(request, "user", None)
+        organisation = (
+            user.get_organisation() if user and user.is_authenticated else None
+        )
 
         if not organisation:
             raise serializers.ValidationError("Organisation not found for the user.")
 
-        queryset = Tenant.objects.filter(organisation=organisation, email=value)
+        tenant_queryset = Tenant.objects.filter(
+            organisation=organisation,
+            email=value,
+        )
 
+        # Exclude current tenant during update
         if self.instance:
-            queryset = queryset.exclude(pk=self.instance.pk)
+            tenant_queryset = tenant_queryset.exclude(pk=self.instance.pk)
 
-        if queryset.exists():
-            raise serializers.ValidationError(
-                "A tenant with this email already exists in your organisation."
-            )
+        if (
+            tenant_queryset.exists()
+            or User.objects.filter(email=value).exists()
+            or InviteUser.objects.filter(email=value).exists()
+        ):
+            raise serializers.ValidationError("Email is already in use.")
+
+        return value
 
         return value
 

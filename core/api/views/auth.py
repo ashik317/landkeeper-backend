@@ -21,7 +21,7 @@ from apps.authentication.models import User, EmailVerification, InviteUser
 from urllib.parse import urlencode
 from django.http import HttpResponseRedirect
 from django.conf import settings
-from rest_framework import status
+from rest_framework import serializers, status
 from rest_framework.views import APIView
 from rest_framework.generics import CreateAPIView, RetrieveUpdateAPIView, ListAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -33,6 +33,7 @@ from apps.property.models import Tenant
 from common.permission import IsLandlord
 from api.serializers.organisation import OrganisationUserSerializer
 from ..serializers.auth import (
+    GoogleLoginSerializer,
     UserRegistrationSerializer,
     UserProfileSerializer,
     TenantProfileSerializer,
@@ -174,6 +175,7 @@ class CustomLoginView(LoginView):
 
 
 class GoogleLoginView(SocialLoginView):
+    serializer_class = GoogleLoginSerializer
     adapter_class = GoogleOAuth2Adapter
     callback_url = "http://localhost:8002/auth/social/google/"
     client_class = OAuth2Client
@@ -192,6 +194,7 @@ class ForgotPasswordView(APIView):
 
         from django.core.validators import validate_email
         from django.core.exceptions import ValidationError
+
         try:
             validate_email(email)
         except ValidationError:
@@ -236,7 +239,13 @@ class SetForgotPasswordView(APIView):
         try:
             uid = urlsafe_base64_decode(uidb64).decode()
             user = self.get_user_or_tenant(uid)
-        except (TypeError, ValueError, OverflowError, User.DoesNotExist, Tenant.DoesNotExist):
+        except (
+            TypeError,
+            ValueError,
+            OverflowError,
+            User.DoesNotExist,
+            Tenant.DoesNotExist,
+        ):
             params = urlencode({"error": "invalid_link"})
             return HttpResponseRedirect(
                 f"{settings.FRONTEND_URL}/auth/password-error?{params}"
@@ -272,7 +281,13 @@ class SetForgotPasswordView(APIView):
         try:
             uid = urlsafe_base64_decode(uidb64).decode()
             user = self.get_user_or_tenant(uid)
-        except (TypeError, ValueError, OverflowError, User.DoesNotExist, Tenant.DoesNotExist):
+        except (
+            TypeError,
+            ValueError,
+            OverflowError,
+            User.DoesNotExist,
+            Tenant.DoesNotExist,
+        ):
             return Response(
                 {"detail": "Invalid reset link."}, status=status.HTTP_400_BAD_REQUEST
             )
@@ -293,6 +308,7 @@ class SetForgotPasswordView(APIView):
             {"detail": "Password has been reset successfully."},
             status=status.HTTP_200_OK,
         )
+
 
 class UpdatePasswordView(APIView):
     permission_classes = [IsAuthenticated]
@@ -387,7 +403,9 @@ class SendInviteView(APIView):
     permission_classes = [IsAuthenticated, IsLandlord]
 
     def post(self, request):
-        serializer = InviteUserSerializer(data=request.data)
+        serializer = InviteUserSerializer(
+            data=request.data, context={"request": request}
+        )
         serializer.is_valid(raise_exception=True)
 
         email = serializer.validated_data["email"]
@@ -552,6 +570,7 @@ class TenantAcceptInviteView(APIView):
             status=status.HTTP_201_CREATED,
         )
 
+
 class OrganisationUserListAPIView(ListAPIView):
     serializer_class = OrganisationUserSerializer
 
@@ -570,7 +589,6 @@ class OrganisationUserListAPIView(ListAPIView):
                 {"role": f"Invalid role. Must be one of {valid_roles}."}
             )
 
-        return (
-            OrganisationUser.objects.filter(organisation=organisation, role=role)
-            .select_related("user")
-        )
+        return OrganisationUser.objects.filter(
+            organisation=organisation, role=role
+        ).select_related("user")

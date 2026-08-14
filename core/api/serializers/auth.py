@@ -1,3 +1,4 @@
+from dj_rest_auth.registration.serializers import SocialLoginSerializer
 from dj_rest_auth.serializers import LoginSerializer, JWTSerializer
 from django.contrib.auth import get_user_model
 from django.db import transaction
@@ -27,6 +28,16 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             "phone",
             "password",
         ]
+
+    def validate_email(self, value):
+        if (
+            User.objects.filter(email=value).exists()
+            or InviteUser.objects.filter(email=value).exists()
+            or Tenant.objects.filter(email=value).exists()
+        ):
+            raise serializers.ValidationError("Email is already in use.")
+
+        return value
 
     def create(self, validated_data):
         with transaction.atomic():
@@ -199,6 +210,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     def get_is_password_available(self, obj):
         return obj.has_usable_password()
 
+
 class TenantProfileSerializer(serializers.ModelSerializer):
     role = serializers.SerializerMethodField()
     is_password_available = serializers.SerializerMethodField()
@@ -249,6 +261,22 @@ class InviteUserSerializer(serializers.ModelSerializer):
             "updated_at",
             "organisation",
         ]
+
+    def validate_email(self, value):
+        request = self.context.get("request")
+        organisation = request.user.get_organisation() if request else None
+
+        if not organisation:
+            raise serializers.ValidationError("Organisation not found for the user.")
+
+        if (
+            User.objects.filter(email=value).exists()
+            or InviteUser.objects.filter(email=value).exists()
+            or Tenant.objects.filter(organisation=organisation, email=value).exists()
+        ):
+            raise serializers.ValidationError("Email is already in use.")
+
+        return value
 
 
 class AcceptInviteSerializer(serializers.Serializer):
@@ -320,3 +348,23 @@ class TenantAcceptInviteSerializer(serializers.Serializer):
         tenant.save(update_fields=["password", "is_active"])
 
         return tenant
+
+
+class GoogleLoginSerializer(SocialLoginSerializer):
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+
+        user = attrs.get("user")
+        email = getattr(user, "email", None)
+
+        if email and (
+            InviteUser.objects.filter(email__iexact=email).exists()
+            or Tenant.objects.filter(email__iexact=email).exists()
+        ):
+            # user/socialaccount may already be persisted at this point — clean up
+            if user and user.pk:
+                user.delete()
+            raise serializers.ValidationError({"email": "Email is already in use."})
+
+        return attrs
