@@ -11,8 +11,18 @@ from rest_framework import serializers
 from apps.organisation.enums import OrganisationRoleChoices
 from apps.organisation.models import OrganisationUser
 from apps.property.models import Tenant
-from apps.tenant.enums import RentPaymentStatusChoices, PaymentProviderChoices, MaintenanceStatus
-from apps.tenant.models import PaymentMethod, RentPayment, CardPayment, MaintenanceRequest
+from apps.tenant.enums import (
+    RentPaymentStatusChoices,
+    PaymentProviderChoices,
+    MaintenanceStatus
+)
+from apps.tenant.models import (
+    PaymentMethod,
+    RentPayment,
+    CardPayment,
+    MaintenanceRequest,
+    MaintenanceRequestComment
+)
 from common.models import DocumentFile
 
 logger = logging.getLogger(__name__)
@@ -423,4 +433,82 @@ class MaintenanceRequestSerializer(serializers.ModelSerializer):
                 doc = DocumentFile.objects.create(file=f)
                 instance.documents.add(doc)
 
+        return instance
+
+
+class MaintenanceRequestCommentAuthorSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.SerializerMethodField()
+    email = serializers.EmailField()
+    type = serializers.SerializerMethodField()
+
+    def get_name(self, obj):
+        return obj.get_full_name()
+
+    def get_type(self, obj):
+        return "tenant" if isinstance(obj, Tenant) else "staff"
+
+
+class MaintenanceRequestCommentSerializer(serializers.ModelSerializer):
+    author = serializers.SerializerMethodField()
+    replies = serializers.SerializerMethodField()
+    documents = DocumentFileSerializer(many=True, read_only=True)
+    upload_files = serializers.ListField(
+        child=serializers.FileField(), write_only=True, required=False
+    )
+
+    class Meta:
+        model = MaintenanceRequestComment
+        fields = [
+            "id",
+            "alias",
+            "message",
+            "parent",
+            "author",
+            "documents",
+            "upload_files",
+            "replies",
+            "created_at",
+        ]
+        read_only_fields = [
+            "id",
+            "alias",
+            "author",
+            "created_at"
+        ]
+
+    def get_author(self, obj):
+        return MaintenanceRequestCommentAuthorSerializer(obj.author).data
+
+    def get_replies(self, obj):
+        replies = obj.replies.all().order_by("created_at")
+        return MaintenanceRequestCommentSerializer(replies, many=True, context=self.context).data
+
+    def validate(self, attrs):
+        parent = attrs.get("parent")
+        maintenance_request = self.context.get("maintenance_request")
+        if parent and maintenance_request and parent.maintenance_request_id != maintenance_request.id:
+            raise serializers.ValidationError(
+                {"parent": "Parent comment must belong to the same maintenance request."}
+            )
+        return attrs
+
+    def create(self, validated_data):
+        upload_files = validated_data.pop("upload_files", [])
+        comment = MaintenanceRequestComment.objects.create(**validated_data)
+        documents = [DocumentFile.objects.create(file=f) for f in upload_files]
+        if documents:
+            comment.documents.add(*documents)
+        return comment
+
+    def update(self, instance, validated_data):
+        upload_files = validated_data.pop("upload_files", [])
+        instance = super().update(instance, validated_data)
+        if upload_files:
+            for old_document in instance.documents.all():
+                instance.documents.remove(old_document)
+                old_document.file.delete(save=False)
+                old_document.delete()
+            new_documents = [DocumentFile.objects.create(file=f) for f in upload_files]
+            instance.documents.add(*new_documents)
         return instance

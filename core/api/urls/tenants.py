@@ -19,6 +19,8 @@ from api.views.tenants import (
     PaymentHistoryView,
     MaintenanceRequestListCreateAPIView,
     MaintenanceRequestRetrieveUpdateDestroyAPIView,
+    MaintenanceRequestCommentListCreateView,
+    MaintenanceRequestCommentRetrieveUpdateDestroyView,
 )
 
 urlpatterns = [
@@ -111,5 +113,15 @@ urlpatterns = [
         "/maintenance-requests/<uuid:alias>",
         MaintenanceRequestRetrieveUpdateDestroyAPIView.as_view(),
         name="maintenance-request-detail",
+    ),
+    path(
+        "/maintenance-requests/<uuid:maintenance_request_alias>/comments",
+        MaintenanceRequestCommentListCreateView.as_view(),
+        name="maintenance-request-comments",
+    ),
+    path(
+        "/maintenance-requests/<uuid:maintenance_request_alias>/comments/<uuid:comment_alias>",
+        MaintenanceRequestCommentRetrieveUpdateDestroyView.as_view(),
+        name="maintenance-request-comment-detail",
     ),
 ]
