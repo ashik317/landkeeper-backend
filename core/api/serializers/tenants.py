@@ -11,8 +11,17 @@ from rest_framework import serializers
 from apps.organisation.enums import OrganisationRoleChoices
 from apps.organisation.models import OrganisationUser
 from apps.property.models import Tenant
-from apps.tenant.enums import RentPaymentStatusChoices, PaymentProviderChoices, MaintenanceStatus
-from apps.tenant.models import PaymentMethod, RentPayment, CardPayment, MaintenanceRequest
+from apps.tenant.enums import (
+    RentPaymentStatusChoices,
+    PaymentProviderChoices,
+    MaintenanceStatus,
+)
+from apps.tenant.models import (
+    PaymentMethod,
+    RentPayment,
+    CardPayment,
+    MaintenanceRequest,
+)
 from common.models import DocumentFile
 
 logger = logging.getLogger(__name__)
@@ -90,7 +99,7 @@ class RentPaymentSerializer(serializers.ModelSerializer):
         ]
 
 
-class TenantSerializer(serializers.ModelSerializer):
+class TenantSlimSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tenant
         fields = ["id", "first_name", "last_name", "email"]
@@ -127,19 +136,23 @@ class LandlordRentPaymentCreateSerializer(serializers.ModelSerializer):
         tenant = attrs["tenant"]
         due_date = attrs["due_date"]
 
-        exists = RentPayment.objects.filter(
-            tenant=tenant, due_date=due_date
-        ).exclude(status=RentPaymentStatusChoices.FAILED).exists()
+        exists = (
+            RentPayment.objects.filter(tenant=tenant, due_date=due_date)
+            .exclude(status=RentPaymentStatusChoices.FAILED)
+            .exists()
+        )
 
         if exists:
             raise serializers.ValidationError(
-                {"due_date": "A rent payment for this tenant and due date already exists."}
+                {
+                    "due_date": "A rent payment for this tenant and due date already exists."
+                }
             )
         return attrs
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        data["tenant"] = TenantSerializer(instance.tenant).data
+        data["tenant"] = TenantSlimSerializer(instance.tenant).data
         return data
 
 
@@ -154,12 +167,15 @@ class RentBalanceSummarySerializer(serializers.Serializer):
     def get_outstanding_balance(self, tenant):
         rent_total = (
             RentPayment.objects.filter(tenant=tenant)
-            .exclude(status__in=[
-                RentPaymentStatusChoices.CLEARED,
-                RentPaymentStatusChoices.REFUNDED,
-                RentPaymentStatusChoices.FAILED,
-            ])
-            .aggregate(total=Sum("amount"))["total"] or 0
+            .exclude(
+                status__in=[
+                    RentPaymentStatusChoices.CLEARED,
+                    RentPaymentStatusChoices.REFUNDED,
+                    RentPaymentStatusChoices.FAILED,
+                ]
+            )
+            .aggregate(total=Sum("amount"))["total"]
+            or 0
         )
 
         existing_due_dates = set(
@@ -169,12 +185,15 @@ class RentBalanceSummarySerializer(serializers.Serializer):
         orphan_card_total = (
             CardPayment.objects.filter(tenant=tenant)
             .exclude(due_date__in=existing_due_dates)
-            .exclude(status__in=[
-                RentPaymentStatusChoices.CLEARED,
-                RentPaymentStatusChoices.REFUNDED,
-                RentPaymentStatusChoices.FAILED,
-            ])
-            .aggregate(total=Sum("amount"))["total"] or 0
+            .exclude(
+                status__in=[
+                    RentPaymentStatusChoices.CLEARED,
+                    RentPaymentStatusChoices.REFUNDED,
+                    RentPaymentStatusChoices.FAILED,
+                ]
+            )
+            .aggregate(total=Sum("amount"))["total"]
+            or 0
         )
 
         return rent_total + orphan_card_total
@@ -196,9 +215,7 @@ class RentBalanceSummarySerializer(serializers.Serializer):
             return next_payment.due_date
 
         last_payment = (
-            RentPayment.objects.filter(tenant=tenant)
-            .order_by("-due_date")
-            .first()
+            RentPayment.objects.filter(tenant=tenant).order_by("-due_date").first()
         )
 
         if last_payment:
@@ -210,7 +227,9 @@ class RentBalanceSummarySerializer(serializers.Serializer):
         else:
             return None
 
-        next_date = date(year, month, min(rent_day, calendar.monthrange(year, month)[1]))
+        next_date = date(
+            year, month, min(rent_day, calendar.monthrange(year, month)[1])
+        )
         while next_date <= today:
             month += 1
             if month > 12:
@@ -262,14 +281,21 @@ class DirectDebitPaymentRequestSerializer(serializers.Serializer):
 
         if amount != rent_payment.amount:
             raise serializers.ValidationError(
-                {"amount": f"Amount must match the rent payment amount of £{rent_payment.amount}."}
+                {
+                    "amount": f"Amount must match the rent payment amount of £{rent_payment.amount}."
+                }
             )
 
-        payment_method = PaymentMethod.objects.filter(
-            tenant=request.user,
-            provider=PaymentProviderChoices.GOCARDLESS,
-            is_default=True,
-        ).exclude(provider_mandate_id__isnull=True).exclude(provider_mandate_id="").first()
+        payment_method = (
+            PaymentMethod.objects.filter(
+                tenant=request.user,
+                provider=PaymentProviderChoices.GOCARDLESS,
+                is_default=True,
+            )
+            .exclude(provider_mandate_id__isnull=True)
+            .exclude(provider_mandate_id="")
+            .first()
+        )
 
         if not payment_method:
             raise serializers.ValidationError(
@@ -280,11 +306,11 @@ class DirectDebitPaymentRequestSerializer(serializers.Serializer):
         attrs["payment_method"] = payment_method
         return attrs
 
+
 class CardPaymentRequestSerializer(serializers.Serializer):
     due_date = serializers.DateField()
     amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0.01)
     payment_method_id = serializers.CharField(required=False, allow_blank=True)
-
 
 
 class CardPaymentSerializer(serializers.ModelSerializer):
@@ -305,10 +331,12 @@ class CardPaymentSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+
 class DocumentFileSerializer(serializers.ModelSerializer):
     class Meta:
         model = DocumentFile
         fields = ["id", "file"]
+
 
 class MaintenanceRequestSerializer(serializers.ModelSerializer):
     documents = serializers.ListField(
@@ -392,7 +420,9 @@ class MaintenanceRequestSerializer(serializers.ModelSerializer):
             invalid_fields = set(attrs.keys()) - allowed_fields
             if invalid_fields:
                 raise serializers.ValidationError(
-                    {"detail": "Landlords can only update the maintenance request status."}
+                    {
+                        "detail": "Landlords can only update the maintenance request status."
+                    }
                 )
         return attrs
 
