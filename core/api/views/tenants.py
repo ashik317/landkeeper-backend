@@ -13,6 +13,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Value, CharField
 from django.db.models.functions import Cast, Concat, LPad
 from django.http import FileResponse
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
@@ -29,6 +30,7 @@ from reportlab.platypus import (
     Spacer,
 )
 from rest_framework import permissions, status
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.filters import SearchFilter
 from rest_framework.generics import (
     ListCreateAPIView,
@@ -52,7 +54,7 @@ from api.serializers.tenants import (
     DirectDebitPaymentRequestSerializer,
     LandlordRentPaymentCreateSerializer,
     CardPaymentSerializer,
-    MaintenanceRequestSerializer,
+    MaintenanceRequestSerializer, MaintenanceRequestCommentSerializer,
 )
 from apps.property.models import Tenant
 from apps.tenant.enums import (
@@ -73,7 +75,7 @@ from apps.tenant.models import (
     RentPayment,
     ProcessedWebhookEvent,
     CardPayment,
-    MaintenanceRequest
+    MaintenanceRequest, MaintenanceRequestComment
 )
 from apps.notification.tasks import (
     notify_maintenance_status_changed_task,
@@ -84,7 +86,7 @@ from apps.tenant.utils import get_statement_date_range
 from common.models import DocumentFile
 from common.permission import (
     IsTenant,
-    IsLandlord, IsAdmin
+    IsLandlord, IsAdmin, IsLettingAgent
 )
 
 logger = logging.getLogger("apps.tenant.payments")
@@ -996,3 +998,98 @@ class MaintenanceRequestRetrieveUpdateDestroyAPIView(RetrieveUpdateDestroyAPIVie
                     updated_by_id=self.request.user.id,
                 )
             )
+
+
+class MaintenanceRequestCommentListCreateView(ListCreateAPIView):
+    serializer_class = MaintenanceRequestCommentSerializer
+    permission_classes = [IsTenant | IsLandlord | IsAdmin | IsLettingAgent]
+
+    def get_maintenance_request(self):
+        user = self.request.user
+        if isinstance(user, Tenant):
+            return get_object_or_404(
+                MaintenanceRequest,
+                alias=self.kwargs["maintenance_request_alias"],
+                tenant=user,
+            )
+        organisation = user.get_organisation()
+        if not organisation:
+            raise PermissionDenied("You are not part of an organisation.")
+        return get_object_or_404(
+            MaintenanceRequest,
+            alias=self.kwargs["maintenance_request_alias"],
+            organisation=organisation,
+        )
+
+    def get_queryset(self):
+        return (
+            MaintenanceRequestComment.objects.filter(
+                maintenance_request=self.get_maintenance_request(),
+                parent__isnull=True,
+            )
+            .select_related("staff_author", "tenant_author")
+            .prefetch_related("documents", "replies")
+            .order_by("created_at")
+        )
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["maintenance_request"] = self.get_maintenance_request()
+        return context
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        maintenance_request = self.get_maintenance_request()
+        if isinstance(user, Tenant):
+            serializer.save(tenant_author=user, maintenance_request=maintenance_request)
+        else:
+            serializer.save(staff_author=user, maintenance_request=maintenance_request)
+
+
+class MaintenanceRequestCommentRetrieveUpdateDestroyView(RetrieveUpdateDestroyAPIView):
+    serializer_class = MaintenanceRequestCommentSerializer
+    permission_classes = [IsTenant | IsLandlord | IsAdmin | IsLettingAgent]
+    lookup_field = "alias"
+    lookup_url_kwarg = "comment_alias"
+
+    def get_maintenance_request(self):
+        user = self.request.user
+        if isinstance(user, Tenant):
+            return get_object_or_404(
+                MaintenanceRequest,
+                alias=self.kwargs["maintenance_request_alias"],
+                tenant=user,
+            )
+        organisation = user.get_organisation()
+        if not organisation:
+            raise PermissionDenied("You are not part of an organisation.")
+        return get_object_or_404(
+            MaintenanceRequest,
+            alias=self.kwargs["maintenance_request_alias"],
+            organisation=organisation,
+        )
+
+    def get_queryset(self):
+        return (
+            MaintenanceRequestComment.objects.filter(
+                maintenance_request=self.get_maintenance_request()
+            )
+            .select_related("staff_author", "tenant_author")
+            .prefetch_related("documents", "replies")
+        )
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["maintenance_request"] = self.get_maintenance_request()
+        return context
+
+    def perform_update(self, serializer):
+        comment = self.get_object()
+        if comment.author != self.request.user:
+            raise PermissionDenied("You can only edit your own comment.")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if instance.author != self.request.user:
+            raise PermissionDenied("You can only delete your own comment.")
+        instance.delete()

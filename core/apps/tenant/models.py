@@ -1,6 +1,7 @@
 import uuid
 from django.db import models
-
+from django.conf import settings
+from django.utils.translation import gettext_lazy as _
 from apps.organisation.models import Organisation
 from apps.property.models import Tenant, Property
 from apps.tenant.enums import (
@@ -183,3 +184,66 @@ class MaintenanceRequest(CreatedAtUpdatedAtBaseModel):
     def __str__(self):
         return f"{self.get_category_display()}"
 
+
+class MaintenanceRequestComment(CreatedAtUpdatedAtBaseModel):
+    message = models.TextField(verbose_name=_("Message"))
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        related_name="replies",
+        blank=True,
+        null=True,
+        verbose_name=_("Parent Comment"),
+    )
+    # Staff/org user author (landlord, admin, letting agent)
+    staff_author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="maintenance_request_comments",
+        verbose_name=_("Commented By (Staff)"),
+        null=True,
+        blank=True,
+    )
+    # Tenant author
+    tenant_author = models.ForeignKey(
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name="maintenance_request_comments",
+        verbose_name=_("Commented By (Tenant)"),
+        null=True,
+        blank=True,
+    )
+    maintenance_request = models.ForeignKey(
+        MaintenanceRequest,
+        on_delete=models.CASCADE,
+        related_name="maintenance_request_comments",
+        verbose_name=_("Maintenance Request"),
+    )
+    documents = models.ManyToManyField(
+        DocumentFile,
+        blank=True,
+        related_name="maintenance_request_comments",
+        verbose_name=_("Attachments"),
+    )
+
+    class Meta:
+        verbose_name = _("Maintenance Request Comment")
+        verbose_name_plural = _("Maintenance Request Comments")
+        ordering = ["-created_at", "-updated_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                        models.Q(staff_author__isnull=False, tenant_author__isnull=True)
+                        | models.Q(staff_author__isnull=True, tenant_author__isnull=False)
+                ),
+                name="maintenance_comment_single_author",
+            )
+        ]
+
+    @property
+    def author(self):
+        return self.staff_author or self.tenant_author
+
+    def __str__(self):
+        who = self.author.email if hasattr(self.author, "email") else str(self.author)
+        return f"Comment by {who} on Maintenance #{self.maintenance_request.id}"
