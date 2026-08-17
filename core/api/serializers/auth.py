@@ -2,6 +2,7 @@ from dj_rest_auth.registration.serializers import SocialLoginSerializer
 from dj_rest_auth.serializers import LoginSerializer, JWTSerializer
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers
 from apps.authentication.models import EmailVerification, InviteUser
 from apps.authentication.enums import NameTitleChoices
@@ -355,16 +356,19 @@ class GoogleLoginSerializer(SocialLoginSerializer):
     def validate(self, attrs):
         attrs = super().validate(attrs)
 
-        user = attrs.get("user")
-        email = getattr(user, "email", None)
+        social_user = attrs.get("user")
+        email = getattr(social_user, "email", None)
 
-        if email and (
-            InviteUser.objects.filter(email__iexact=email).exists()
-            or Tenant.objects.filter(email__iexact=email).exists()
-        ):
-            # user/socialaccount may already be persisted at this point — clean up
-            if user and user.pk:
-                user.delete()
-            raise serializers.ValidationError({"email": "Email is already in use."})
+        if not email:
+            attrs["tenant"] = None
+            return attrs
 
+        email = email.lower().strip()
+
+        tenant = Tenant.objects.filter(email__iexact=email).first()
+        if tenant is not None:
+            attrs["tenant"] = tenant
+            return attrs
+
+        attrs["tenant"] = None
         return attrs
