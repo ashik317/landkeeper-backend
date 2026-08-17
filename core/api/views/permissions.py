@@ -3,7 +3,7 @@ from django.shortcuts import get_object_or_404
 from rest_framework.generics import (
     ListAPIView,
     CreateAPIView,
-    RetrieveUpdateAPIView,
+    RetrieveUpdateDestroyAPIView,
 )
 from rest_framework.exceptions import NotFound
 
@@ -44,7 +44,7 @@ class PermissionListAPIView(CreateAPIView):
         serializer.save(organisation=organisation)
 
 
-class PermissionDetailView(RetrieveUpdateAPIView):
+class PermissionDetailView(RetrieveUpdateDestroyAPIView):
     permission_classes = [IsLandlord | IsAdmin]
     serializer_class = PermissionSerializer
 
