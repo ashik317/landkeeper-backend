@@ -63,7 +63,6 @@ class CanAccessProperty(BasePermission):
 
     def has_object_permission(self, request, view, obj):
         user = request.user
-
         organisation = user.get_organisation()
 
         if not organisation:
@@ -77,33 +76,33 @@ class CanAccessProperty(BasePermission):
         if not organisation_user:
             return False
 
-        # Landlord/Admin have full access
+        # Landlord/Admin → full access
         if organisation_user.role in [
             OrganisationRoleChoices.LANDLORD,
             OrganisationRoleChoices.ADMIN,
         ]:
             return True
 
-        # Mortgage Adviser requires explicit property permission
-        if organisation_user.role == OrganisationRoleChoices.MORTGAGE_ADVISER:
-            permission = Permission.objects.filter(
-                user=user,
-                organisation=organisation,
-                property=obj,
-            ).first()
+        # Everyone else → explicit permission required
+        permission = Permission.objects.filter(
+            user=user,
+            organisation=organisation,
+            property=obj,
+        ).first()
 
-            if not permission:
-                return False
+        if not permission:
+            return False
 
-            # GET, HEAD, OPTIONS
-            if request.method in SAFE_METHODS:
-                return permission.can_view
+        # GET, HEAD, OPTIONS
+        if request.method in SAFE_METHODS:
+            return permission.can_view or permission.can_edit
 
-            # PUT/PATCH
-            if request.method in ["PUT", "PATCH"]:
-                return permission.can_edit
+        # PUT/PATCH
+        if request.method in ["PUT", "PATCH"]:
+            return permission.can_edit
 
-            # DELETE
+        # DELETE → only Landlord/Admin
+        if request.method == "DELETE":
             return False
 
         return False
@@ -135,26 +134,26 @@ class CanAccessMortgage(BasePermission):
         ]:
             return True
 
-        # Mortgage Adviser requires explicit mortgage permission
-        if organisation_user.role == OrganisationRoleChoices.MORTGAGE_ADVISER:
-            permission = Permission.objects.filter(
-                user=user,
-                organisation=organisation,
-                mortgage=obj,
-            ).first()
+        # Everyone else → explicit permission required
+        permission = Permission.objects.filter(
+            user=user,
+            organisation=organisation,
+            mortgage=obj,
+        ).first()
 
-            if not permission:
-                return False
+        if not permission:
+            return False
 
-            # GET, HEAD, OPTIONS
-            if request.method in SAFE_METHODS:
-                return permission.can_view
+        # GET, HEAD, OPTIONS
+        if request.method in SAFE_METHODS:
+            return permission.can_view or permission.can_edit
 
-            # PUT/PATCH
-            if request.method in ["PUT", "PATCH"]:
-                return permission.can_edit
+        # PUT/PATCH
+        if request.method in ["PUT", "PATCH"]:
+            return permission.can_edit
 
-            # DELETE
+        # DELETE → only Landlord/Admin
+        if request.method == "DELETE":
             return False
 
         return False

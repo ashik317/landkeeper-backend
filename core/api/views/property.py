@@ -50,13 +50,17 @@ class PropertyListView(ListCreateAPIView):
 
         queryset = Property.objects.filter(organisation=organisation)
 
-        # Mortgage advisers can only see permitted properties
-        is_mortgage_adviser = OrganisationUser.objects.filter(
+        current_user = OrganisationUser.objects.filter(
             user=self.request.user,
-            role=OrganisationRoleChoices.MORTGAGE_ADVISER,
-        ).exists()
+            organisation=organisation,
+        ).first()
 
-        if is_mortgage_adviser:
+        if current_user.role in [
+            OrganisationRoleChoices.LANDLORD,
+            OrganisationRoleChoices.ADMIN,
+        ]:
+            return queryset
+        else:
             queryset = queryset.filter(
                 property_permissions__user=self.request.user,
                 property_permissions__can_view=True,
@@ -81,6 +85,7 @@ class PropertyDetailView(RetrieveUpdateDestroyAPIView):
             alias=self.kwargs["property_alias"],
         )
 
+        # Check if the user has permission to access this property
         self.check_object_permissions(self.request, obj)
 
         return obj
@@ -88,7 +93,7 @@ class PropertyDetailView(RetrieveUpdateDestroyAPIView):
 
 class MortgageListView(ListCreateAPIView):
     serializer_class = MortgageSerializers
-    permission_classes = [IsLandlord | IsAdmin | IsMortgageAdviser]
+    permission_classes = [CanAccessMortgage]
     search_fields = ["property__property_name", "lender_name"]
 
     def get_queryset(self):
@@ -99,15 +104,20 @@ class MortgageListView(ListCreateAPIView):
         queryset = Mortgage.objects.filter(organisation=organisation)
 
         # Mortgage advisers can only see permitted properties
-        is_mortgage_adviser = OrganisationUser.objects.filter(
+        current_user = OrganisationUser.objects.filter(
             user=self.request.user,
-            role=OrganisationRoleChoices.MORTGAGE_ADVISER,
-        ).exists()
+            organisation=organisation,
+        ).first()
 
-        if is_mortgage_adviser:
+        if current_user.role in [
+            OrganisationRoleChoices.LANDLORD,
+            OrganisationRoleChoices.ADMIN,
+        ]:
+            return queryset
+        else:
             queryset = queryset.filter(
-                mortgage_adviser_permissions__mortgage_adviser=self.request.user,
-                mortgage_adviser_permissions__can_view=True,
+                mortgage_permissions__user=self.request.user,
+                mortgage_permissions__can_view=True,
             ).distinct()
 
     def perform_create(self, serializer):
@@ -119,10 +129,15 @@ class MortgageListView(ListCreateAPIView):
 
 class MortgageDetailView(RetrieveUpdateDestroyAPIView):
     serializer_class = MortgageSerializers
-    permission_classes = [IsLandlord | IsAdmin | IsMortgageAdviser]
+    permission_classes = [CanAccessMortgage]
 
     def get_object(self):
-        return get_object_or_404(Mortgage, alias=self.kwargs["mortgage_alias"])
+        obj = get_object_or_404(Mortgage, alias=self.kwargs["mortgage_alias"])
+
+        # Check if the user has permission to access this mortgage
+        self.check_object_permissions(self.request, obj)
+
+        return obj
 
 
 class TenantListView(ListCreateAPIView):
