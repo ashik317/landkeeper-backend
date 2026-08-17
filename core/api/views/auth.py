@@ -109,7 +109,7 @@ class ResendVerificationView(APIView):
 
 
 def get_tokens_for_tenant(tenant):
-    refresh = RefreshToken()  # NOT .for_user() — avoids OutstandingToken FK crash
+    refresh = RefreshToken()
 
     user_id = tenant.pk
     if not isinstance(user_id, int):
@@ -134,9 +134,7 @@ class CustomLoginView(LoginView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # -------------------------
         # TENANT LOGIN
-        # -------------------------
         tenant = Tenant.objects.filter(email=email).first()
         if tenant is not None:
             if not tenant.check_password(password):
@@ -167,18 +165,66 @@ class CustomLoginView(LoginView):
                 },
                 status=status.HTTP_200_OK,
             )
-
-        # -------------------------
         # DEFAULT USER LOGIN
-        # -------------------------
         return super().post(request, *args, **kwargs)
 
+def get_user_type_label(user):
+    if user.is_superuser:
+        return "SUPER_ADMIN"
+
+    organisation_user = user.organisation_users.first()
+    if organisation_user:
+        return organisation_user.role
+    return "LANDLORD"
 
 class GoogleLoginView(SocialLoginView):
     serializer_class = GoogleLoginSerializer
     adapter_class = GoogleOAuth2Adapter
     callback_url = "http://localhost:8002/auth/social/google/"
     client_class = OAuth2Client
+
+    def post(self, request, *args, **kwargs):
+        self.request = request
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        tenant = serializer.validated_data.get("tenant")
+        if tenant is not None:
+            return self._tenant_login_response(tenant)
+
+        self.serializer = serializer
+        self.login()
+        return self.get_response()
+
+    def get_response(self):
+        response = super().get_response()
+        response.data["user"]["user_type"] = get_user_type_label(self.user)
+        return response
+
+    def _tenant_login_response(self, tenant):
+        if not tenant.is_active:
+            return Response(
+                {"detail": "This tenant account is inactive."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        refresh = get_tokens_for_tenant(tenant)
+
+        return Response(
+            {
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "tenant": {
+                    "id": tenant.id,
+                    "email": tenant.email,
+                    "full_name": tenant.get_full_name(),
+                    "organisation_name": tenant.organisation.name,
+                    "property_name": tenant.property.property_name,
+                    "user_type": "tenant",
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class ForgotPasswordView(APIView):
