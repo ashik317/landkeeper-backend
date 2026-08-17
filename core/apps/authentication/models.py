@@ -138,3 +138,65 @@ class InviteUser(CreatedAtUpdatedAtBaseModel):
 
     def __str__(self):
         return f"{self.email} - {self.role}"
+
+
+class Permission(CreatedAtUpdatedAtBaseModel):
+    from apps.organisation.models import Organisation
+    from apps.property.models import Property, Mortgage
+
+    can_view = models.BooleanField(default=False)
+    can_edit = models.BooleanField(default=False)
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="permissions",
+    )
+
+    property = models.ForeignKey(
+        Property,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="property_permissions",
+    )
+
+    mortgage = models.ForeignKey(
+        Mortgage,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="mortgage_permissions",
+    )
+
+    organisation = models.ForeignKey(
+        Organisation,
+        on_delete=models.CASCADE,
+        related_name="organisation_permissions",
+    )
+
+    class Meta:
+        constraints = [
+            # Either property OR mortgage, but not both
+            models.CheckConstraint(
+                condition=(
+                    models.Q(property__isnull=False) ^ models.Q(mortgage__isnull=False)
+                ),
+                name="permission_property_or_mortgage",
+            ),
+            # Same user cannot have the same property twice
+            models.UniqueConstraint(
+                fields=["user", "property"],
+                condition=models.Q(property__isnull=False),
+                name="unique_user_property_permission",
+            ),
+            # Same user cannot have the same mortgage twice
+            models.UniqueConstraint(
+                fields=["user", "mortgage"],
+                condition=models.Q(mortgage__isnull=False),
+                name="unique_user_mortgage_permission",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Permission for {self.user}"

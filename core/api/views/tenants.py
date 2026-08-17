@@ -54,7 +54,8 @@ from api.serializers.tenants import (
     DirectDebitPaymentRequestSerializer,
     LandlordRentPaymentCreateSerializer,
     CardPaymentSerializer,
-    MaintenanceRequestSerializer, MaintenanceRequestCommentSerializer,
+    MaintenanceRequestSerializer,
+    MaintenanceRequestCommentSerializer,
 )
 from apps.property.models import Tenant
 from apps.tenant.enums import (
@@ -62,7 +63,7 @@ from apps.tenant.enums import (
     PaymentProviderChoices,
     PaymentMethodTypeChoices,
     PaymentMethodStatusChoices,
-    MaintenanceStatus
+    MaintenanceStatus,
 )
 from apps.tenant.gocardless_client import (
     create_redirect_flow,
@@ -75,19 +76,17 @@ from apps.tenant.models import (
     RentPayment,
     ProcessedWebhookEvent,
     CardPayment,
-    MaintenanceRequest, MaintenanceRequestComment
+    MaintenanceRequest,
+    MaintenanceRequestComment,
 )
 from apps.notification.tasks import (
     notify_maintenance_status_changed_task,
-    notify_maintenance_request_created_task
+    notify_maintenance_request_created_task,
 )
 from apps.tenant.stripe_client import create_payment_intent
 from apps.tenant.utils import get_statement_date_range
 from common.models import DocumentFile
-from common.permission import (
-    IsTenant,
-    IsLandlord, IsAdmin, IsLettingAgent
-)
+from common.permission import IsTenant, IsLandlord, IsAdmin, IsLettingAgent
 
 logger = logging.getLogger("apps.tenant.payments")
 
@@ -95,6 +94,7 @@ _TERMINAL_STATUSES = {
     RentPaymentStatusChoices.CLEARED,
     RentPaymentStatusChoices.REFUNDED,
 }
+
 
 class PaymentMethodListCreateView(ListAPIView):
     serializer_class = PaymentMethodSerializer
@@ -305,7 +305,9 @@ class DirectDebitSetupView(APIView):
                 success_redirect_url=serializer.validated_data["success_redirect_url"],
             )
         except gocardless_pro.errors.GoCardlessProError:
-            logger.exception("GoCardless create_redirect_flow failed", extra={"tenant_id": tenant.id})
+            logger.exception(
+                "GoCardless create_redirect_flow failed", extra={"tenant_id": tenant.id}
+            )
             return Response(
                 {"error": "Payment provider error. Please try again."},
                 status=status.HTTP_502_BAD_GATEWAY,
@@ -332,11 +334,16 @@ class DirectDebitCompleteView(APIView):
             )
         except gocardless_pro.errors.InvalidStateError:
             return Response(
-                {"error": "This direct debit setup link has expired or already been used."},
+                {
+                    "error": "This direct debit setup link has expired or already been used."
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except gocardless_pro.errors.GoCardlessProError:
-            logger.exception("GoCardless complete_redirect_flow failed", extra={"tenant_id": tenant.id})
+            logger.exception(
+                "GoCardless complete_redirect_flow failed",
+                extra={"tenant_id": tenant.id},
+            )
             return Response(
                 {"error": "Payment provider error. Please try again."},
                 status=status.HTTP_502_BAD_GATEWAY,
@@ -362,6 +369,7 @@ class DirectDebitCompleteView(APIView):
             status=status.HTTP_201_CREATED,
         )
 
+
 class DirectDebitPaymentView(APIView):
     permission_classes = [IsTenant]
 
@@ -382,7 +390,10 @@ class DirectDebitPaymentView(APIView):
             )
         except gocardless_pro.errors.InvalidStateError as e:
             return Response(
-                {"error": "Mandate is not active. Please set up direct debit again.", "detail": str(e)},
+                {
+                    "error": "Mandate is not active. Please set up direct debit again.",
+                    "detail": str(e),
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
         except gocardless_pro.errors.GoCardlessProError:
@@ -391,18 +402,23 @@ class DirectDebitPaymentView(APIView):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        updated = RentPayment.objects.filter(pk=rent_payment.pk).exclude(
-            status__in=_TERMINAL_STATUSES
-        ).update(
-            provider_payment_id=payment.id,
-            payment_method=payment_method,
-            status=RentPaymentStatusChoices.PROCESSING,
+        updated = (
+            RentPayment.objects.filter(pk=rent_payment.pk)
+            .exclude(status__in=_TERMINAL_STATUSES)
+            .update(
+                provider_payment_id=payment.id,
+                payment_method=payment_method,
+                status=RentPaymentStatusChoices.PROCESSING,
+            )
         )
 
         if not updated:
             logger.warning(
                 "DirectDebitPaymentView: rent_payment already terminal, skipped status downgrade",
-                extra={"rent_payment_alias": str(rent_payment.alias), "payment_id": payment.id},
+                extra={
+                    "rent_payment_alias": str(rent_payment.alias),
+                    "payment_id": payment.id,
+                },
             )
 
         return Response(
@@ -434,6 +450,7 @@ class RentStatementView(APIView):
     api/rent-statements/?period=weekly&year=2026&week=29
     api/rent-statements/?period=custom&start_date=2026-01-01&end_date=2026-03-31
     """
+
     permission_classes = [IsTenant]
 
     def get(self, request):
@@ -475,20 +492,24 @@ class RentStatementView(APIView):
         rows = []
 
         for p in rent_payments:
-            rows.append({
-                "date": p.paid_date or p.due_date,
-                "type": cls._payment_type_label(p.payment_method, "Rent"),
-                "amount": p.amount,
-                "status": p.get_status_display(),
-            })
+            rows.append(
+                {
+                    "date": p.paid_date or p.due_date,
+                    "type": cls._payment_type_label(p.payment_method, "Rent"),
+                    "amount": p.amount,
+                    "status": p.get_status_display(),
+                }
+            )
 
         for c in card_payments:
-            rows.append({
-                "date": c.due_date,
-                "type": cls._payment_type_label(c.payment_method, "Card"),
-                "amount": c.amount,
-                "status": c.get_status_display(),
-            })
+            rows.append(
+                {
+                    "date": c.due_date,
+                    "type": cls._payment_type_label(c.payment_method, "Card"),
+                    "amount": c.amount,
+                    "status": c.get_status_display(),
+                }
+            )
 
         rows.sort(key=lambda r: r["date"])
         return rows
@@ -496,7 +517,9 @@ class RentStatementView(APIView):
     @staticmethod
     def build_rent_statement_pdf(tenant, rows, period_label):
         buffer = BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=20 * mm, bottomMargin=20 * mm)
+        doc = SimpleDocTemplate(
+            buffer, pagesize=A4, topMargin=20 * mm, bottomMargin=20 * mm
+        )
         styles = getSampleStyleSheet()
         elements = []
 
@@ -507,24 +530,30 @@ class RentStatementView(APIView):
         data = [["Date", "Type", "Amount", "Status"]]
         total = 0
         for r in rows:
-            data.append([
-                r["date"].strftime("%d %b %Y"),
-                r["type"],
-                f"£{r['amount']:,.2f}",
-                r["status"],
-            ])
+            data.append(
+                [
+                    r["date"].strftime("%d %b %Y"),
+                    r["type"],
+                    f"£{r['amount']:,.2f}",
+                    r["status"],
+                ]
+            )
             total += r["amount"]
 
         data.append(["", "", f"Total: £{total:,.2f}", ""])
 
         table = Table(data, colWidths=[100, 80, 120, 120])
-        table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f0f0f0")),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("GRID", (0, 0), (-1, -2), 0.5, colors.grey),
-            ("FONTNAME", (-2, -1), (-2, -1), "Helvetica-Bold"),
-            ("ALIGN", (2, 0), (2, -1), "RIGHT"),
-        ]))
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f0f0f0")),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("GRID", (0, 0), (-1, -2), 0.5, colors.grey),
+                    ("FONTNAME", (-2, -1), (-2, -1), "Helvetica-Bold"),
+                    ("ALIGN", (2, 0), (2, -1), "RIGHT"),
+                ]
+            )
+        )
         elements.append(table)
 
         doc.build(elements)
@@ -564,7 +593,9 @@ class StripeWebhookView(APIView):
             event_type = event["type"]
             data_object = event["data"]["object"]
         except (KeyError, TypeError):
-            logger.warning("Stripe webhook malformed payload", extra={"event_id": event.get("id")})
+            logger.warning(
+                "Stripe webhook malformed payload", extra={"event_id": event.get("id")}
+            )
             return Response(
                 {"error": "Malformed event payload"},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -573,24 +604,39 @@ class StripeWebhookView(APIView):
         try:
             with transaction.atomic():
                 if not self._claim_event(event["id"]):
-                    return Response({"received": True, "duplicate": True}, status=status.HTTP_200_OK)
+                    return Response(
+                        {"received": True, "duplicate": True}, status=status.HTTP_200_OK
+                    )
 
                 if event_type == "payment_intent.succeeded":
-                    self._mark_payment(data_object["id"], RentPaymentStatusChoices.CLEARED)
-                    self._mark_card_payment(data_object["id"], RentPaymentStatusChoices.CLEARED)
+                    self._mark_payment(
+                        data_object["id"], RentPaymentStatusChoices.CLEARED
+                    )
+                    self._mark_card_payment(
+                        data_object["id"], RentPaymentStatusChoices.CLEARED
+                    )
                 elif event_type == "payment_intent.payment_failed":
                     reason = data_object.get("last_payment_error", {}).get(
                         "message", "Payment failed"
                     )
                     self._mark_payment(
-                        data_object["id"], RentPaymentStatusChoices.FAILED, failure_reason=reason
+                        data_object["id"],
+                        RentPaymentStatusChoices.FAILED,
+                        failure_reason=reason,
                     )
                     self._mark_card_payment(
-                        data_object["id"], RentPaymentStatusChoices.FAILED, failure_reason=reason
+                        data_object["id"],
+                        RentPaymentStatusChoices.FAILED,
+                        failure_reason=reason,
                     )
         except Exception:
-            logger.exception("Stripe webhook processing failed", extra={"event_id": event.get("id")})
-            return Response({"error": "Processing error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception(
+                "Stripe webhook processing failed", extra={"event_id": event.get("id")}
+            )
+            return Response(
+                {"error": "Processing error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         return Response({"received": True}, status=status.HTTP_200_OK)
 
@@ -610,14 +656,19 @@ class StripeWebhookView(APIView):
         if failure_reason:
             update_fields["failure_reason"] = failure_reason
 
-        updated = RentPayment.objects.filter(
-            provider_payment_id=provider_payment_id
-        ).exclude(status__in=_TERMINAL_STATUSES).update(**update_fields)
+        updated = (
+            RentPayment.objects.filter(provider_payment_id=provider_payment_id)
+            .exclude(status__in=_TERMINAL_STATUSES)
+            .update(**update_fields)
+        )
 
         if not updated:
             logger.warning(
                 "Stripe webhook: no matching non-terminal RentPayment",
-                extra={"provider_payment_id": provider_payment_id, "new_status": new_status},
+                extra={
+                    "provider_payment_id": provider_payment_id,
+                    "new_status": new_status,
+                },
             )
 
     @staticmethod
@@ -626,14 +677,19 @@ class StripeWebhookView(APIView):
         if failure_reason:
             update_fields["failure_reason"] = failure_reason
 
-        card_payment = CardPayment.objects.filter(
-            provider_payment_id=provider_payment_id
-        ).exclude(status__in=_TERMINAL_STATUSES).first()
+        card_payment = (
+            CardPayment.objects.filter(provider_payment_id=provider_payment_id)
+            .exclude(status__in=_TERMINAL_STATUSES)
+            .first()
+        )
 
         if not card_payment:
             logger.warning(
                 "Stripe webhook: no matching non-terminal CardPayment",
-                extra={"provider_payment_id": provider_payment_id, "new_status": new_status},
+                extra={
+                    "provider_payment_id": provider_payment_id,
+                    "new_status": new_status,
+                },
             )
             return
 
@@ -644,10 +700,14 @@ class StripeWebhookView(APIView):
         else:
             rent_update_fields = update_fields
 
-        rent_updated = RentPayment.objects.filter(
-            tenant_id=card_payment.tenant_id,
-            due_date=card_payment.due_date,
-        ).exclude(status__in=_TERMINAL_STATUSES).update(**rent_update_fields)
+        rent_updated = (
+            RentPayment.objects.filter(
+                tenant_id=card_payment.tenant_id,
+                due_date=card_payment.due_date,
+            )
+            .exclude(status__in=_TERMINAL_STATUSES)
+            .update(**rent_update_fields)
+        )
 
         if not rent_updated:
             logger.warning(
@@ -712,7 +772,10 @@ class GoCardlessWebhookView(APIView):
                                 failure_reason="Direct debit payment failed",
                             )
             except Exception:
-                logger.exception("GoCardless webhook event processing failed", extra={"event_id": event_id})
+                logger.exception(
+                    "GoCardless webhook event processing failed",
+                    extra={"event_id": event_id},
+                )
                 continue
 
         return Response({"received": True}, status=status.HTTP_200_OK)
@@ -720,7 +783,9 @@ class GoCardlessWebhookView(APIView):
     @staticmethod
     def _claim_event(event_id):
         try:
-            ProcessedWebhookEvent.objects.create(provider="gocardless", event_id=event_id)
+            ProcessedWebhookEvent.objects.create(
+                provider="gocardless", event_id=event_id
+            )
             return True
         except IntegrityError:
             return False
@@ -742,28 +807,31 @@ class GoCardlessWebhookView(APIView):
         if failure_reason:
             update_fields["failure_reason"] = failure_reason
 
-        updated = RentPayment.objects.filter(
-            provider_payment_id=provider_payment_id
-        ).exclude(status__in=_TERMINAL_STATUSES).update(**update_fields)
+        updated = (
+            RentPayment.objects.filter(provider_payment_id=provider_payment_id)
+            .exclude(status__in=_TERMINAL_STATUSES)
+            .update(**update_fields)
+        )
 
         if not updated:
             logger.warning(
                 "GoCardless webhook: no matching non-terminal RentPayment",
-                extra={"provider_payment_id": provider_payment_id, "new_status": new_status},
+                extra={
+                    "provider_payment_id": provider_payment_id,
+                    "new_status": new_status,
+                },
             )
 
 
 ENDING_SOON_DAYS = 30
+
+
 class PropertyTenancyListView(APIView):
     permission_classes = [IsTenant]
 
     def get(self, request):
         today = date.today()
-        tenants = (
-            Tenant.objects
-            .select_related("property")
-            .filter(id=request.user.id)
-        )
+        tenants = Tenant.objects.select_related("property").filter(id=request.user.id)
 
         results = []
         for tenant in tenants:
@@ -783,18 +851,22 @@ class PropertyTenancyListView(APIView):
 
                 if tenant.tenancy_end_date < today:
                     status = "Expired"
-                elif tenant.tenancy_end_date <= today + timedelta(days=ENDING_SOON_DAYS):
+                elif tenant.tenancy_end_date <= today + timedelta(
+                    days=ENDING_SOON_DAYS
+                ):
                     status = "Ending soon"
                 elif tenant.tenancy_start_date <= today:
                     status = "Active"
 
-            results.append({
-                "tenant_id": tenant.id,
-                "property_address": tenant.property.address,
-                "tenancy_term": tenancy_term,
-                "length": length,
-                "status": status,
-            })
+            results.append(
+                {
+                    "tenant_id": tenant.id,
+                    "property_address": tenant.property.address,
+                    "tenancy_term": tenancy_term,
+                    "length": length,
+                    "status": status,
+                }
+            )
 
         return Response(results)
 
@@ -804,15 +876,13 @@ class FinancialOverviewListView(APIView):
 
     def get(self, request):
         today = date.today()
-        tenants = (
-            Tenant.objects
-            .select_related("property")
-            .filter(id=request.user.id)
-        )
+        tenants = Tenant.objects.select_related("property").filter(id=request.user.id)
 
         results = []
         for tenant in tenants:
-            payments = RentPayment.objects.filter(tenant=tenant).order_by("-due_date")[:10]
+            payments = RentPayment.objects.filter(tenant=tenant).order_by("-due_date")[
+                :10
+            ]
 
             outstanding_balance = sum(
                 p.amount for p in payments if p.status not in _TERMINAL_STATUSES
@@ -820,8 +890,7 @@ class FinancialOverviewListView(APIView):
 
             next_rent_due_date = None
             upcoming = (
-                RentPayment.objects
-                .filter(tenant=tenant, due_date__gte=today)
+                RentPayment.objects.filter(tenant=tenant, due_date__gte=today)
                 .exclude(status__in=_TERMINAL_STATUSES)
                 .order_by("due_date")
                 .first()
@@ -842,14 +911,18 @@ class FinancialOverviewListView(APIView):
                         month = 1
                         year += 1
                     last_day_next_month = calendar.monthrange(year, month)[1]
-                    next_rent_due_date = date(year, month, min(rent_day, last_day_next_month))
+                    next_rent_due_date = date(
+                        year, month, min(rent_day, last_day_next_month)
+                    )
 
-            results.append({
-                "tenant_id": tenant.id,
-                "next_rent_due_date": next_rent_due_date,
-                "outstanding_balance": outstanding_balance,
-                "rent_amount": tenant.rent_amount,
-            })
+            results.append(
+                {
+                    "tenant_id": tenant.id,
+                    "next_rent_due_date": next_rent_due_date,
+                    "outstanding_balance": outstanding_balance,
+                    "rent_amount": tenant.rent_amount,
+                }
+            )
 
         return Response(results)
 
@@ -859,9 +932,9 @@ class PaymentHistoryView(APIView):
 
     def get(self, request):
         tenant = request.user
-        card_payments = CardPayment.objects.filter(
-            tenant=tenant
-        ).select_related("payment_method")
+        card_payments = CardPayment.objects.filter(tenant=tenant).select_related(
+            "payment_method"
+        )
 
         gocardless_payments = RentPayment.objects.filter(
             tenant=tenant,
@@ -879,30 +952,43 @@ class PaymentHistoryView(APIView):
     def _build_history(card_payments, gocardless_payments):
         rows = []
         for c in card_payments:
-            rows.append({
-                "alias": c.alias,
-                "payment_method": PaymentMethodSerializer(c.payment_method).data if c.payment_method else None,
-                "provider_payment_id": c.provider_payment_id,
-                "amount": c.amount,
-                "due_date": c.due_date,
-                "status": c.get_status_display(),
-                "failure_reason": c.failure_reason,
-                "created_at": c.created_at,
-                "updated_at": c.updated_at,
-            })
+            rows.append(
+                {
+                    "alias": c.alias,
+                    "payment_method": (
+                        PaymentMethodSerializer(c.payment_method).data
+                        if c.payment_method
+                        else None
+                    ),
+                    "provider_payment_id": c.provider_payment_id,
+                    "amount": c.amount,
+                    "due_date": c.due_date,
+                    "status": c.get_status_display(),
+                    "failure_reason": c.failure_reason,
+                    "created_at": c.created_at,
+                    "updated_at": c.updated_at,
+                }
+            )
         for p in gocardless_payments:
-            rows.append({
-                "alias": p.alias,
-                "payment_method": PaymentMethodSerializer(p.payment_method).data if p.payment_method else None,
-                "provider_payment_id": p.provider_payment_id,
-                "amount": p.amount,
-                "due_date": p.due_date,
-                "status": p.get_status_display(),
-                "failure_reason": p.failure_reason,
-                "created_at": p.created_at,
-                "updated_at": p.updated_at,
-            })
+            rows.append(
+                {
+                    "alias": p.alias,
+                    "payment_method": (
+                        PaymentMethodSerializer(p.payment_method).data
+                        if p.payment_method
+                        else None
+                    ),
+                    "provider_payment_id": p.provider_payment_id,
+                    "amount": p.amount,
+                    "due_date": p.due_date,
+                    "status": p.get_status_display(),
+                    "failure_reason": p.failure_reason,
+                    "created_at": p.created_at,
+                    "updated_at": p.updated_at,
+                }
+            )
         return rows
+
 
 class MaintenanceRequestListCreateAPIView(ListCreateAPIView):
     serializer_class = MaintenanceRequestSerializer
@@ -930,7 +1016,7 @@ class MaintenanceRequestListCreateAPIView(ListCreateAPIView):
     def get_permissions(self):
         if self.request.method == "POST":
             return [IsTenant()]
-        return [(IsTenant | IsLandlord |IsAdmin)()]
+        return [(IsTenant | IsLandlord | IsAdmin)()]
 
     def get_queryset(self):
         user = self.request.user
@@ -961,10 +1047,7 @@ class MaintenanceRequestListCreateAPIView(ListCreateAPIView):
         )
 
         files = self.request.FILES.getlist("documents")
-        document_files = [
-            DocumentFile.objects.create(file=file)
-            for file in files
-        ]
+        document_files = [DocumentFile.objects.create(file=file) for file in files]
         maintenance_request.documents.set(document_files)
         transaction.on_commit(
             lambda: notify_maintenance_request_created_task.delay(
@@ -972,10 +1055,11 @@ class MaintenanceRequestListCreateAPIView(ListCreateAPIView):
             )
         )
 
+
 class MaintenanceRequestRetrieveUpdateDestroyAPIView(RetrieveUpdateDestroyAPIView):
     serializer_class = MaintenanceRequestSerializer
     lookup_field = "alias"
-    permission_classes = [IsTenant|IsLandlord|IsAdmin]
+    permission_classes = [IsTenant | IsLandlord | IsAdmin]
 
     def get_queryset(self):
         user = self.request.user
@@ -1003,6 +1087,7 @@ class MaintenanceRequestRetrieveUpdateDestroyAPIView(RetrieveUpdateDestroyAPIVie
 class MaintenanceRequestCommentListCreateView(ListCreateAPIView):
     serializer_class = MaintenanceRequestCommentSerializer
     permission_classes = [IsTenant | IsLandlord | IsAdmin | IsLettingAgent]
+    pagination_class = None
 
     def get_maintenance_request(self):
         user = self.request.user

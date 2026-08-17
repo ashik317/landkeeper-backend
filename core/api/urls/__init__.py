@@ -9,5 +9,5 @@ urlpatterns = [
     path("/tenant", include("api.urls.tenants")),
     path("/notifications", include("api.urls.notifications")),
     path("/templates", include("api.urls.documents")),
-    path("/mortgage-advisers", include("api.urls.mortgage_advisers")),
+    path("/permissions", include("api.urls.permissions")),
 ]

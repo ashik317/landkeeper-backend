@@ -12,6 +12,8 @@ from .models import (
 @admin.register(Property)
 class PropertyAdmin(admin.ModelAdmin):
     list_display = (
+        "id",
+        "alias",
         "property_name",
         "organisation",
         "property_type",
@@ -24,6 +26,8 @@ class PropertyAdmin(admin.ModelAdmin):
 @admin.register(Mortgage)
 class MortgageAdmin(admin.ModelAdmin):
     list_display = (
+        "id",
+        "alias",
         "lender_name",
         "property",
         "organisation",

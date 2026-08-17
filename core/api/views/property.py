@@ -21,7 +21,8 @@ from common.permission import (
     IsLandlord,
     IsMortgageAdviser,
     IsAdmin,
-    CanAccessMortgageAdviserProperty,
+    CanAccessProperty,
+    CanAccessMortgage,
 )
 
 from api.serializers.property import (
@@ -37,14 +38,9 @@ from api.serializers.property import (
 
 class PropertyListView(ListCreateAPIView):
     serializer_class = PropertySerializer
-    permission_classes = [IsLandlord | IsAdmin | IsMortgageAdviser]
+    permission_classes = [CanAccessProperty]
     filterset_fields = ["property_type", "status"]
     search_fields = ["property_name", "address"]
-
-    def get_permission_classes(self):
-        if self.request.method == "POST":
-            return [IsLandlord | IsAdmin]
-        return [IsLandlord | IsAdmin | IsMortgageAdviser]
 
     def get_queryset(self):
         organisation = self.request.user.get_organisation()
@@ -62,8 +58,8 @@ class PropertyListView(ListCreateAPIView):
 
         if is_mortgage_adviser:
             queryset = queryset.filter(
-                mortgage_adviser_permissions__mortgage_adviser=self.request.user,
-                mortgage_adviser_permissions__can_view=True,
+                property_permissions__user=self.request.user,
+                property_permissions__can_view=True,
             ).distinct()
 
         return queryset
@@ -77,13 +73,17 @@ class PropertyListView(ListCreateAPIView):
 
 class PropertyDetailView(RetrieveUpdateDestroyAPIView):
     serializer_class = PropertySerializer
-    permission_classes = [
-        IsLandlord | IsAdmin | IsMortgageAdviser,
-        CanAccessMortgageAdviserProperty,
-    ]
+    permission_classes = [CanAccessProperty]
 
     def get_object(self):
-        return get_object_or_404(Property, alias=self.kwargs["property_alias"])
+        obj = get_object_or_404(
+            Property,
+            alias=self.kwargs["property_alias"],
+        )
+
+        self.check_object_permissions(self.request, obj)
+
+        return obj
 
 
 class MortgageListView(ListCreateAPIView):

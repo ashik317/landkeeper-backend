@@ -2,15 +2,24 @@ from django.contrib import admin
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.translation import gettext_lazy as _
-from apps.authentication.models import User, InviteUser
+from apps.authentication.models import User, InviteUser, Permission
 
 admin.site.register(InviteUser)
+admin.site.register(Permission)
 
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     ordering = ["-created_at"]
-    list_display = ["email", "first_name", "last_name", "is_staff", "is_active"]
+    list_display = [
+        "id",
+        "alias",
+        "email",
+        "first_name",
+        "last_name",
+        "is_staff",
+        "is_active",
+    ]
     search_fields = ["email", "first_name", "last_name"]
     list_filter = ["is_staff", "is_active", "title"]
 

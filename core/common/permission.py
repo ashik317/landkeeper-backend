@@ -1,12 +1,8 @@
 from rest_framework.permissions import BasePermission, SAFE_METHODS
-from apps.authentication.models import User
+from apps.authentication.models import Permission, User
 from apps.organisation.enums import OrganisationRoleChoices
 from apps.organisation.models import OrganisationUser
-from apps.property.models import (
-    Tenant,
-    MortgageAdviserPropertyPermission,
-    MortgageAdviserMortgagePermission,
-)
+from apps.property.models import Tenant
 
 
 class IsTenant(BasePermission):
@@ -25,8 +21,10 @@ class IsLandlord(BasePermission):
             role=OrganisationRoleChoices.LANDLORD,
         ).exists()
 
+
 class IsAdmin(BasePermission):
     message = "Only administrators can perform this action."
+
     def has_permission(self, request, view):
         if not isinstance(request.user, User):
             return False
@@ -34,6 +32,7 @@ class IsAdmin(BasePermission):
             user=request.user,
             role=OrganisationRoleChoices.ADMIN,
         ).exists()
+
 
 class IsLettingAgent(BasePermission):
     message = "Only letting agents can perform this action."
@@ -45,6 +44,7 @@ class IsLettingAgent(BasePermission):
             user=request.user,
             role=OrganisationRoleChoices.LETTING_AGENT,
         ).exists()
+
 
 class IsMortgageAdviser(BasePermission):
     message = "Only mortgage advisers can perform this action."
@@ -58,37 +58,103 @@ class IsMortgageAdviser(BasePermission):
         ).exists()
 
 
-class CanAccessMortgageAdviserProperty(BasePermission):
+class CanAccessProperty(BasePermission):
     message = "You do not have permission to access this property."
 
     def has_object_permission(self, request, view, obj):
-        permission = MortgageAdviserPropertyPermission.objects.filter(
-            mortgage_adviser=request.user,
-            property=obj,
-        ).first()
+        user = request.user
 
-        if not permission:
+        organisation = user.get_organisation()
+
+        if not organisation:
             return False
 
-        if request.method in SAFE_METHODS:
-            return permission.can_view
+        organisation_user = OrganisationUser.objects.filter(
+            user=user,
+            organisation=organisation,
+        ).first()
 
-        return permission.can_edit
+        if not organisation_user:
+            return False
+
+        # Landlord/Admin have full access
+        if organisation_user.role in [
+            OrganisationRoleChoices.LANDLORD,
+            OrganisationRoleChoices.ADMIN,
+        ]:
+            return True
+
+        # Mortgage Adviser requires explicit property permission
+        if organisation_user.role == OrganisationRoleChoices.MORTGAGE_ADVISER:
+            permission = Permission.objects.filter(
+                user=user,
+                organisation=organisation,
+                property=obj,
+            ).first()
+
+            if not permission:
+                return False
+
+            # GET, HEAD, OPTIONS
+            if request.method in SAFE_METHODS:
+                return permission.can_view
+
+            # PUT/PATCH
+            if request.method in ["PUT", "PATCH"]:
+                return permission.can_edit
+
+            # DELETE
+            return False
+
+        return False
 
 
-class CanAccessMortgageAdviserMortgage(BasePermission):
+class CanAccessMortgage(BasePermission):
     message = "You do not have permission to access this mortgage."
 
     def has_object_permission(self, request, view, obj):
-        permission = MortgageAdviserMortgagePermission.objects.filter(
-            mortgage_adviser=request.user,
-            mortgage=obj,
-        ).first()
+        user = request.user
 
-        if not permission:
+        organisation = user.get_organisation()
+
+        if not organisation:
             return False
 
-        if request.method in SAFE_METHODS:
-            return permission.can_view
+        organisation_user = OrganisationUser.objects.filter(
+            user=user,
+            organisation=organisation,
+        ).first()
 
-        return permission.can_edit
+        if not organisation_user:
+            return False
+
+        # Landlord/Admin have full access
+        if organisation_user.role in [
+            OrganisationRoleChoices.LANDLORD,
+            OrganisationRoleChoices.ADMIN,
+        ]:
+            return True
+
+        # Mortgage Adviser requires explicit mortgage permission
+        if organisation_user.role == OrganisationRoleChoices.MORTGAGE_ADVISER:
+            permission = Permission.objects.filter(
+                user=user,
+                organisation=organisation,
+                mortgage=obj,
+            ).first()
+
+            if not permission:
+                return False
+
+            # GET, HEAD, OPTIONS
+            if request.method in SAFE_METHODS:
+                return permission.can_view
+
+            # PUT/PATCH
+            if request.method in ["PUT", "PATCH"]:
+                return permission.can_edit
+
+            # DELETE
+            return False
+
+        return False
