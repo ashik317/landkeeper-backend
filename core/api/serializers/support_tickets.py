@@ -5,7 +5,7 @@ from apps.organisation.models import OrganisationUser
 from apps.supportticket.models import (
     SupportTicketFile,
     SupportTicket,
-    SupportTicketComment
+    SupportTicketComment,
 )
 
 User = get_user_model()
@@ -29,7 +29,9 @@ class SupportTicketUserSlimSerializer(serializers.ModelSerializer):
         ]
 
     def get_role(self, obj):
-        organisation_user = OrganisationUser.objects.filter(user=obj).only("role").first()
+        organisation_user = (
+            OrganisationUser.objects.filter(user=obj).only("role").first()
+        )
         return organisation_user.role if organisation_user else None
 
 
@@ -73,9 +75,7 @@ class SupportTicketSerializer(serializers.ModelSerializer):
 
     def _generate_ticket_id(self):
         last_ticket = (
-            SupportTicket.objects.exclude(ticket_id="")
-            .order_by("-id")
-            .first()
+            SupportTicket.objects.exclude(ticket_id="").order_by("-id").first()
         )
 
         if last_ticket and last_ticket.ticket_id:
@@ -85,7 +85,7 @@ class SupportTicketSerializer(serializers.ModelSerializer):
             last_number = 0
 
         new_number = last_number + 1
-        return f"#{new_number:08d}"
+        return f"ST-{new_number:08d}"
 
     def create(self, validated_data):
         upload_files = validated_data.pop("upload_files", [])

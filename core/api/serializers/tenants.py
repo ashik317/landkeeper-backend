@@ -14,16 +14,17 @@ from apps.property.models import Tenant
 from apps.tenant.enums import (
     RentPaymentStatusChoices,
     PaymentProviderChoices,
-    MaintenanceStatus
+    MaintenanceStatus,
 )
 from apps.tenant.models import (
     PaymentMethod,
     RentPayment,
     CardPayment,
     MaintenanceRequest,
-    MaintenanceRequestComment
+    MaintenanceRequestComment,
 )
 from common.models import DocumentFile
+from common.serializers import TenantSlimSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -352,7 +353,7 @@ class MaintenanceRequestSerializer(serializers.ModelSerializer):
     )
 
     request_id = serializers.SerializerMethodField()
-    tenant = serializers.SerializerMethodField()
+    tenant = TenantSlimSerializer()
     property = serializers.SerializerMethodField()
     organisation = serializers.SerializerMethodField()
 
@@ -385,9 +386,6 @@ class MaintenanceRequestSerializer(serializers.ModelSerializer):
 
     def get_request_id(self, obj):
         return f"MR-{obj.id:08d}"
-
-    def get_tenant(self, obj):
-        return obj.tenant.get_full_name() if obj.tenant else None
 
     def get_property(self, obj):
         if not obj.property:
@@ -491,26 +489,29 @@ class MaintenanceRequestCommentSerializer(serializers.ModelSerializer):
             "replies",
             "created_at",
         ]
-        read_only_fields = [
-            "id",
-            "alias",
-            "author",
-            "created_at"
-        ]
+        read_only_fields = ["id", "alias", "author", "created_at"]
 
     def get_author(self, obj):
         return MaintenanceRequestCommentAuthorSerializer(obj.author).data
 
     def get_replies(self, obj):
         replies = obj.replies.all().order_by("created_at")
-        return MaintenanceRequestCommentSerializer(replies, many=True, context=self.context).data
+        return MaintenanceRequestCommentSerializer(
+            replies, many=True, context=self.context
+        ).data
 
     def validate(self, attrs):
         parent = attrs.get("parent")
         maintenance_request = self.context.get("maintenance_request")
-        if parent and maintenance_request and parent.maintenance_request_id != maintenance_request.id:
+        if (
+            parent
+            and maintenance_request
+            and parent.maintenance_request_id != maintenance_request.id
+        ):
             raise serializers.ValidationError(
-                {"parent": "Parent comment must belong to the same maintenance request."}
+                {
+                    "parent": "Parent comment must belong to the same maintenance request."
+                }
             )
         return attrs
 

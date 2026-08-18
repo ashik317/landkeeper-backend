@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 from apps.property.models import Property, DocumentFile
+from apps.tenant.models import Tenant
 
 from .models import Media
 
@@ -44,3 +45,11 @@ class DocumentFileSlimSerializer(serializers.ModelSerializer):
     class Meta:
         model = DocumentFile
         fields = ["id", "file", "description"]
+
+
+class TenantSlimSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(source="get_full_name", read_only=True)
+
+    class Meta:
+        model = Tenant
+        fields = ["alias", "name", "email", "phone", "avatar"]

@@ -1043,7 +1043,6 @@ class MaintenanceRequestListCreateAPIView(ListCreateAPIView):
             tenant=tenant,
             property=tenant.property,
             organisation=tenant.organisation,
-            current_status=MaintenanceStatus.IN_PROGRESS,
         )
 
         files = self.request.FILES.getlist("documents")
