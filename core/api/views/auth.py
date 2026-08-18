@@ -1,6 +1,7 @@
 from datetime import timedelta
 import requests
 from django.utils import timezone
+from django.conf import settings
 from rest_framework.exceptions import ValidationError
 from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 from allauth.socialaccount.providers.oauth2.client import OAuth2Client
@@ -182,7 +183,7 @@ def get_user_type_label(user):
 
 class GoogleLoginView(SocialLoginView):
     adapter_class = GoogleOAuth2Adapter
-    callback_url = "http://localhost:8002/auth/social/google/"
+    callback_url = settings.GOOGLE_CALLBACK_URL
     client_class = OAuth2Client
 
     def post(self, request, *args, **kwargs):
