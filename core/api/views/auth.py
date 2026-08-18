@@ -169,6 +169,7 @@ class CustomLoginView(LoginView):
         # DEFAULT USER LOGIN
         return super().post(request, *args, **kwargs)
 
+
 def get_user_type_label(user):
     if user.is_superuser:
         return "SUPER_ADMIN"
@@ -178,6 +179,7 @@ def get_user_type_label(user):
         return organisation_user.role
     return "LANDLORD"
 
+
 class GoogleLoginView(SocialLoginView):
     adapter_class = GoogleOAuth2Adapter
     callback_url = "http://localhost:8002/auth/social/google/"
@@ -185,7 +187,9 @@ class GoogleLoginView(SocialLoginView):
 
     def post(self, request, *args, **kwargs):
         self.request = request
-        data = request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
+        data = (
+            request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
+        )
 
         access_token = data.get("access_token")
         if not access_token:
@@ -213,7 +217,6 @@ class GoogleLoginView(SocialLoginView):
             tenant = Tenant.objects.filter(email__iexact=email).first()
             if tenant is not None:
                 return self._tenant_login_response(tenant)
-
 
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
