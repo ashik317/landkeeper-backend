@@ -384,7 +384,7 @@ class MaintenanceRequestSerializer(serializers.ModelSerializer):
         ]
 
     def get_request_id(self, obj):
-        return f"#MR-{obj.id:08d}"
+        return f"MR-{obj.id:08d}"
 
     def get_tenant(self, obj):
         return obj.tenant.get_full_name() if obj.tenant else None
