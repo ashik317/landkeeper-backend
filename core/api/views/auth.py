@@ -1,4 +1,5 @@
 from datetime import timedelta
+import requests
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
@@ -31,9 +32,9 @@ from apps.organisation.enums import OrganisationRoleChoices
 from apps.organisation.models import OrganisationUser
 from apps.property.models import Tenant
 from common.permission import IsLandlord
+from allauth.socialaccount.providers.oauth2.client import OAuth2Error
 from api.serializers.organisation import OrganisationUserSerializer
 from ..serializers.auth import (
-    GoogleLoginSerializer,
     UserRegistrationSerializer,
     UserProfileSerializer,
     TenantProfileSerializer,
@@ -168,6 +169,7 @@ class CustomLoginView(LoginView):
         # DEFAULT USER LOGIN
         return super().post(request, *args, **kwargs)
 
+
 def get_user_type_label(user):
     if user.is_superuser:
         return "SUPER_ADMIN"
@@ -177,24 +179,81 @@ def get_user_type_label(user):
         return organisation_user.role
     return "LANDLORD"
 
+
 class GoogleLoginView(SocialLoginView):
-    serializer_class = GoogleLoginSerializer
     adapter_class = GoogleOAuth2Adapter
     callback_url = "http://localhost:8002/auth/social/google/"
     client_class = OAuth2Client
 
     def post(self, request, *args, **kwargs):
         self.request = request
-        serializer = self.get_serializer(data=request.data)
+        data = (
+            request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
+        )
+
+        access_token = data.get("access_token")
+        if not access_token:
+            code = data.get("code")
+            if not code:
+                return Response(
+                    {"detail": "access_token or code is required."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                access_token = self._exchange_code_for_access_token(code)
+            except OAuth2Error:
+                return Response(
+                    {"detail": "Unable to authenticate with Google."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            data["access_token"] = access_token
+            data.pop("code", None)
+
+        email = self._get_google_email(access_token)
+
+        if email:
+            email = email.lower().strip()
+
+            tenant = Tenant.objects.filter(email__iexact=email).first()
+            if tenant is not None:
+                return self._tenant_login_response(tenant)
+
+        serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
-
-        tenant = serializer.validated_data.get("tenant")
-        if tenant is not None:
-            return self._tenant_login_response(tenant)
-
         self.serializer = serializer
         self.login()
         return self.get_response()
+
+    def _exchange_code_for_access_token(self, code):
+        adapter = self.adapter_class(self.request)
+        provider = adapter.get_provider()
+        app = provider.get_app(self.request)
+
+        client = self.client_class(
+            self.request,
+            app.client_id,
+            app.secret,
+            adapter.access_token_method,
+            adapter.access_token_url,
+            self.callback_url,
+            scope_delimiter=adapter.scope_delimiter,
+            headers=adapter.headers,
+            basic_auth=adapter.basic_auth,
+        )
+        token = client.get_access_token(code)
+        return token["access_token"]
+
+    def _get_google_email(self, access_token):
+        try:
+            resp = requests.get(
+                "https://www.googleapis.com/oauth2/v3/userinfo",
+                params={"access_token": access_token},
+                timeout=5,
+            )
+            resp.raise_for_status()
+            return resp.json().get("email")
+        except requests.RequestException:
+            return None
 
     def get_response(self):
         response = super().get_response()
@@ -218,7 +277,9 @@ class GoogleLoginView(SocialLoginView):
                     "id": tenant.id,
                     "email": tenant.email,
                     "full_name": tenant.get_full_name(),
+                    "organisation_id": tenant.organisation_id,
                     "organisation_name": tenant.organisation.name,
+                    "property_id": tenant.property_id,
                     "property_name": tenant.property.property_name,
                     "user_type": "tenant",
                 },
