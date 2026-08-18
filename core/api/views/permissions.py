@@ -92,7 +92,7 @@ class PropertyPermissionListAPIView(ListAPIView):
         return Permission.objects.filter(
             property=property_obj,
             organisation=organisation,
-        )
+        ).order_by("-created_at")
 
 
 class MortgagePermissionListAPIView(ListAPIView):
@@ -120,4 +120,4 @@ class MortgagePermissionListAPIView(ListAPIView):
         return Permission.objects.filter(
             mortgage=mortgage_obj,
             organisation=organisation,
-        )
+        ).order_by("-created_at")

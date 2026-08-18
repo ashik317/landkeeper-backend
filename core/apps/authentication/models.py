@@ -184,17 +184,19 @@ class Permission(CreatedAtUpdatedAtBaseModel):
                 ),
                 name="permission_property_or_mortgage",
             ),
-            # Same user cannot have the same property twice
-            models.UniqueConstraint(
-                fields=["user", "property"],
-                condition=models.Q(property__isnull=False),
-                name="unique_user_property_permission",
+            models.CheckConstraint(
+                condition=(models.Q(can_edit=False) | models.Q(can_view=True)),
+                name="permission_edit_requires_view",
             ),
-            # Same user cannot have the same mortgage twice
             models.UniqueConstraint(
-                fields=["user", "mortgage"],
+                fields=["organisation", "user", "property"],
+                condition=models.Q(property__isnull=False),
+                name="unique_org_user_property_permission",
+            ),
+            models.UniqueConstraint(
+                fields=["organisation", "user", "mortgage"],
                 condition=models.Q(mortgage__isnull=False),
-                name="unique_user_mortgage_permission",
+                name="unique_org_user_mortgage_permission",
             ),
         ]
 

@@ -41,26 +41,88 @@ class PermissionSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
+        user = attrs.get("user")
         property_obj = attrs.get("property")
         mortgage_obj = attrs.get("mortgage")
 
-        # Cannot have both
+        # User explicitly changed can_view
+        if "can_view" in attrs:
+            can_view = attrs["can_view"]
+
+            # If user turns view OFF,
+            # automatically turn edit OFF.
+            if can_view is False:
+                attrs["can_edit"] = False
+
+        # User explicitly changed can_edit
+        if "can_edit" in attrs:
+            can_edit = attrs["can_edit"]
+
+            # If user turns edit ON,
+            # automatically turn view ON.
+            if can_edit is True:
+                attrs["can_view"] = True
+
+        # Property and mortgage cannot both be provided
         if property_obj is not None and mortgage_obj is not None:
             raise serializers.ValidationError(
-                "Permission cannot be assigned to both property and mortgage."
+                {
+                    "non_field_errors": [
+                        "Permission cannot be assigned to both property and mortgage."
+                    ]
+                }
             )
 
-        # Must have one
-        if property_obj is None and mortgage_obj is None:
-            raise serializers.ValidationError(
-                "Either property or mortgage must be provided."
+        # Duplicate property permission
+        if property_obj is not None:
+            queryset = Permission.objects.filter(
+                user=user,
+                property=property_obj,
             )
+
+            if self.instance:
+                queryset = queryset.exclude(pk=self.instance.pk)
+
+            if queryset.exists():
+                raise serializers.ValidationError(
+                    {
+                        "property": [
+                            "This user already has permission for this property."
+                        ]
+                    }
+                )
+
+        # Duplicate mortgage permission
+        if mortgage_obj is not None:
+            queryset = Permission.objects.filter(
+                user=user,
+                mortgage=mortgage_obj,
+            )
+
+            if self.instance:
+                queryset = queryset.exclude(pk=self.instance.pk)
+
+            if queryset.exists():
+                raise serializers.ValidationError(
+                    {
+                        "mortgage": [
+                            "This user already has permission for this mortgage."
+                        ]
+                    }
+                )
 
         return attrs
 
     def to_representation(self, instance):
         rep = super().to_representation(instance)
-        rep["user"] = UserSlimSerializer(instance.user).data
+
+        rep["user"] = UserSlimSerializer(
+            instance.user,
+            context={
+                **self.context,
+            },
+        ).data
+
         return rep
 
 
