@@ -349,26 +349,3 @@ class TenantAcceptInviteSerializer(serializers.Serializer):
         tenant.save(update_fields=["password", "is_active"])
 
         return tenant
-
-
-class GoogleLoginSerializer(SocialLoginSerializer):
-
-    def validate(self, attrs):
-        attrs = super().validate(attrs)
-
-        social_user = attrs.get("user")
-        email = getattr(social_user, "email", None)
-
-        if not email:
-            attrs["tenant"] = None
-            return attrs
-
-        email = email.lower().strip()
-
-        tenant = Tenant.objects.filter(email__iexact=email).first()
-        if tenant is not None:
-            attrs["tenant"] = tenant
-            return attrs
-
-        attrs["tenant"] = None
-        return attrs
