@@ -996,11 +996,11 @@ class MaintenanceRequestListCreateAPIView(ListCreateAPIView):
         DjangoFilterBackend,
         SearchFilter,
     ]
-    filterset_fields = [
-        "is_emergency",
-        "current_status",
-        "category",
-    ]
+    filterset_fields = {
+        "is_emergency": ["exact"],
+        "current_status": ["exact", "in"],
+        "category": ["exact", "in"],
+    }
     search_fields = [
         "request_id",
         "property__property_name",
@@ -1043,7 +1043,7 @@ class MaintenanceRequestListCreateAPIView(ListCreateAPIView):
             tenant=tenant,
             property=tenant.property,
             organisation=tenant.organisation,
-            current_status=MaintenanceStatus.SUBMITTED,
+            current_status=MaintenanceStatus.IN_PROGRESS,
         )
 
         files = self.request.FILES.getlist("documents")
