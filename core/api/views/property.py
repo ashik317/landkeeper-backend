@@ -290,35 +290,32 @@ class PropertyOnboardingAPIView(APIView):
         return Response(serializer.save(), status=status.HTTP_200_OK)
 
 
-HEADERS = [
-    "PROPERTY ADDRESS",
-    "Property Type",
-    "Number of bedrooms",
-    "Owners",
-    "Original purchase date",
-    "Original purchase price",
-    "Current market value",
-    "Mortgage Lender Name",
-    "Outstanding Balance",
-    "Current interest rate",
-    "Monthly Mortgage payment",
-    "Repayment method",
-    "Mortgage end date",
-    "Interest Rate Expiry date",
-    "Monthly Rental Income",
-    "EPC Rating",
-    "Property Tenure",
-    "if Leasehold, Remaining Lease Term",
-    "Monthly Service Charge",
-]
-
-
 class PropertyPortfolioExportView(APIView):
     permission_classes = [IsLandlord | IsAdmin | IsMortgageAdviser]
 
+    HEADERS = [
+        "Property Address",
+        "Property Type",
+        "Number Of Bedrooms",
+        "Owners",
+        "Original Purchase Date",
+        "Original Purchase Price",
+        "Current Market Value",
+        "Mortgage Lender Name",
+        "Outstanding Balance",
+        "Current Interest Rate",
+        "Monthly Mortgage Payment",
+        "Repayment Method",
+        "Mortgage End Date",
+        "Interest Rate Expiry Date",
+        "Monthly Rental Income",
+        "EPC Rating",
+        "Property Tenure",
+        "If Leasehold, Remaining Lease Term",
+        "Monthly Service Charge",
+    ]
+
     def get(self, request):
-        # "format" is reserved by DRF (URL_FORMAT_OVERRIDE) for content
-        # negotiation, so we use "export_format" instead to avoid conflicts.
         export_format = request.query_params.get("export_format", "xlsx").lower()
         if export_format not in ("xlsx", "pdf"):
             return HttpResponse(
@@ -354,9 +351,7 @@ class PropertyPortfolioExportView(APIView):
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
 
-    # ------------------------------------------------------------------
     # Data assembly
-    # ------------------------------------------------------------------
     def _build_rows(self, properties):
         rows = []
         for prop in properties:
@@ -417,9 +412,7 @@ class PropertyPortfolioExportView(APIView):
             "net_income": monthly_rental_income - monthly_payment,
         }
 
-    # ------------------------------------------------------------------
     # Excel export (matches template)
-    # ------------------------------------------------------------------
     def _build_xlsx(self, rows):
         LIGHT_BLUE = "DCE6F1"
         GREY = "D9D9D9"
@@ -435,7 +428,7 @@ class PropertyPortfolioExportView(APIView):
         thin = Side(style="thin", color=GREY)
         border = Border(left=thin, right=thin, top=thin, bottom=thin)
 
-        for col, label in enumerate(HEADERS, start=1):
+        for col, label in enumerate(self.HEADERS, start=1):
             cell = ws.cell(row=1, column=col, value=label)
             cell.font = header_font
             cell.fill = header_fill
@@ -444,9 +437,25 @@ class PropertyPortfolioExportView(APIView):
         ws.row_dimensions[1].height = 42
 
         widths = [
-            30, 14, 10, 18, 14, 15, 14,
-            18, 15, 14, 16, 16, 14, 16,
-            15, 10, 14, 18, 14,
+            30,
+            14,
+            10,
+            18,
+            14,
+            15,
+            14,
+            18,
+            15,
+            14,
+            16,
+            16,
+            14,
+            16,
+            15,
+            10,
+            14,
+            18,
+            14,
         ]
         for i, w in enumerate(widths, start=1):
             ws.column_dimensions[get_column_letter(i)].width = w
@@ -458,12 +467,25 @@ class PropertyPortfolioExportView(APIView):
         row_idx = 2
         for r in rows:
             values = [
-                r["address"], r["property_type"], r["bedrooms"], r["owners"],
-                r["purchase_date"], r["purchase_price"], r["current_value"],
-                r["lender"], r["outstanding_balance"], r["interest_rate"],
-                r["monthly_payment"], r["repayment_method"], r["mortgage_end_date"],
-                r["rate_expiry_date"], r["monthly_rental_income"], r["epc"],
-                r["tenure"], r["lease_term"], r["service_charge"],
+                r["address"],
+                r["property_type"],
+                r["bedrooms"],
+                r["owners"],
+                r["purchase_date"],
+                r["purchase_price"],
+                r["current_value"],
+                r["lender"],
+                r["outstanding_balance"],
+                r["interest_rate"],
+                r["monthly_payment"],
+                r["repayment_method"],
+                r["mortgage_end_date"],
+                r["rate_expiry_date"],
+                r["monthly_rental_income"],
+                r["epc"],
+                r["tenure"],
+                r["lease_term"],
+                r["service_charge"],
             ]
             for col, value in enumerate(values, start=1):
                 cell = ws.cell(row=row_idx, column=col, value=value)
@@ -489,7 +511,7 @@ class PropertyPortfolioExportView(APIView):
         ws.cell(row=label_row, column=9, value="MORTGAGE SUM").font = Font(bold=True)
         ws.cell(row=label_row, column=11, value="PAYMENTS").font = Font(bold=True)
         ws.cell(row=label_row, column=15, value="RENT").font = Font(bold=True)
-        for col in range(1, len(HEADERS) + 1):
+        for col in range(1, len(self.HEADERS) + 1):
             cell = ws.cell(row=label_row, column=col)
             cell.fill = PatternFill("solid", fgColor=GREY)
             cell.border = border
@@ -530,40 +552,76 @@ class PropertyPortfolioExportView(APIView):
         buffer.seek(0)
         return buffer
 
-    # ------------------------------------------------------------------
-    # PDF export (design unchanged)
-    # ------------------------------------------------------------------
+    # PDF export
     def _build_pdf(self, rows):
         INK = colors.HexColor("#111827")
         SUBTLE = colors.HexColor("#6B7280")
         HAIRLINE = colors.HexColor("#E5E7EB")
         ACCENT = colors.HexColor("#8A6D3B")
         WHITE = colors.white
+        ZEBRA = colors.HexColor("#F9FAFB")
 
         page_size = landscape(A4)
         page_w, _ = page_size
 
         title_style = ParagraphStyle(
-            "Title", fontName="Helvetica-Bold", fontSize=20,
-            textColor=INK, alignment=TA_LEFT, leading=24,
+            "Title",
+            fontName="Helvetica-Bold",
+            fontSize=20,
+            textColor=INK,
+            alignment=TA_LEFT,
+            leading=24,
         )
         subtitle_style = ParagraphStyle(
-            "Subtitle", fontName="Helvetica", fontSize=10, textColor=SUBTLE,
+            "Subtitle",
+            fontName="Helvetica",
+            fontSize=10,
+            textColor=SUBTLE,
         )
         kpi_label_style = ParagraphStyle(
-            "KPILabel", fontName="Helvetica", fontSize=9, textColor=SUBTLE,
+            "KPILabel",
+            fontName="Helvetica",
+            fontSize=9,
+            textColor=SUBTLE,
         )
         kpi_value_style = ParagraphStyle(
-            "KPIValue", fontName="Helvetica-Bold", fontSize=17,
-            textColor=INK, spaceBefore=2,
+            "KPIValue",
+            fontName="Helvetica-Bold",
+            fontSize=17,
+            textColor=INK,
+            spaceBefore=2,
         )
         header_left = ParagraphStyle(
-            "HeaderLeft", fontName="Helvetica-Bold", fontSize=6.6,
-            textColor=INK, leading=8,
+            "HeaderLeft",
+            fontName="Helvetica-Bold",
+            fontSize=6.6,
+            textColor=INK,
+            leading=8,
         )
         header_center = ParagraphStyle(
-            "HeaderCenter", fontName="Helvetica-Bold", fontSize=6.6,
-            textColor=INK, alignment=1, leading=8,
+            "HeaderCenter",
+            fontName="Helvetica-Bold",
+            fontSize=6.6,
+            textColor=INK,
+            alignment=1,
+            leading=8,
+        )
+        # Wrapping body styles so long text doesn't get clipped/overflow the cell
+        body_left = ParagraphStyle(
+            "BodyLeft",
+            fontName="Helvetica",
+            fontSize=7.6,
+            textColor=INK,
+            alignment=TA_LEFT,
+            leading=9,
+        )
+        body_center = ParagraphStyle(
+            "BodyCenter",
+            fontName="Helvetica",
+            fontSize=7.6,
+            textColor=INK,
+            alignment=1,
+            leading=9,
         )
 
         def fmt_money(v):
@@ -575,85 +633,129 @@ class PropertyPortfolioExportView(APIView):
         def fmt_date(v):
             return v.strftime("%d/%m/%Y") if v else ""
 
+        # Columns whose text can run long and need wrapping rather than truncation
+        wrap_left_cols = {
+            0,
+            3,
+            7,
+            11,
+            16,
+        }  # address, owners, lender, repayment method, tenure
+
         table_data = [
             [
                 Paragraph(label, header_left if i == 0 else header_center)
-                for i, label in enumerate(HEADERS)
+                for i, label in enumerate(self.HEADERS)
             ]
         ]
         for r in rows:
-            table_data.append(
-                [
-                    r["address"] or "",
-                    r["property_type"] or "",
-                    r["bedrooms"] or "",
-                    r["owners"] or "",
-                    fmt_date(r["purchase_date"]),
-                    fmt_money(r["purchase_price"]),
-                    fmt_money(r["current_value"]),
-                    r["lender"] or "",
-                    fmt_money(r["outstanding_balance"]),
-                    fmt_pct(r["interest_rate"]),
-                    fmt_money(r["monthly_payment"]),
-                    r["repayment_method"] or "",
-                    fmt_date(r["mortgage_end_date"]),
-                    fmt_date(r["rate_expiry_date"]),
-                    fmt_money(r["monthly_rental_income"]),
-                    r["epc"] or "",
-                    r["tenure"] or "",
-                    r["lease_term"] or "",
-                    fmt_money(r["service_charge"]),
-                ]
-            )
+            raw_values = [
+                r["address"] or "",
+                r["property_type"] or "",
+                str(r["bedrooms"]) if r["bedrooms"] is not None else "",
+                r["owners"] or "",
+                fmt_date(r["purchase_date"]),
+                fmt_money(r["purchase_price"]),
+                fmt_money(r["current_value"]),
+                r["lender"] or "",
+                fmt_money(r["outstanding_balance"]),
+                fmt_pct(r["interest_rate"]),
+                fmt_money(r["monthly_payment"]),
+                r["repayment_method"] or "",
+                fmt_date(r["mortgage_end_date"]),
+                fmt_date(r["rate_expiry_date"]),
+                fmt_money(r["monthly_rental_income"]),
+                r["epc"] or "",
+                r["tenure"] or "",
+                str(r["lease_term"]) if r["lease_term"] is not None else "",
+                fmt_money(r["service_charge"]),
+            ]
+            row_cells = []
+            for i, value in enumerate(raw_values):
+                if i in wrap_left_cols:
+                    row_cells.append(Paragraph(value, body_left))
+                else:
+                    row_cells.append(Paragraph(value, body_center))
+            table_data.append(row_cells)
 
         totals = self._totals(rows)
         totals_row = [
-            "Totals", "", "", "", "", "",
-            fmt_money(totals["current_value"]), "",
-            fmt_money(totals["outstanding_balance"]), "",
-            fmt_money(totals["monthly_payment"]), "", "", "",
-            fmt_money(totals["monthly_rental_income"]), "", "", "", "",
+            "Totals",
+            "",
+            "",
+            "",
+            "",
+            "",
+            fmt_money(totals["current_value"]),
+            "",
+            fmt_money(totals["outstanding_balance"]),
+            "",
+            fmt_money(totals["monthly_payment"]),
+            "",
+            "",
+            "",
+            fmt_money(totals["monthly_rental_income"]),
+            "",
+            "",
+            "",
+            "",
         ]
         table_data.append(totals_row)
 
         col_widths = [
-            33 * mm, 17 * mm, 12 * mm, 14 * mm, 16 * mm, 16 * mm,
-            17 * mm, 16 * mm, 16 * mm, 13 * mm, 15 * mm, 18 * mm,
-            15 * mm, 15 * mm, 17 * mm, 11 * mm, 14 * mm, 13 * mm, 15 * mm,
+            33 * mm,
+            17 * mm,
+            12 * mm,
+            14 * mm,
+            16 * mm,
+            16 * mm,
+            17 * mm,
+            16 * mm,
+            16 * mm,
+            13 * mm,
+            15 * mm,
+            18 * mm,
+            15 * mm,
+            15 * mm,
+            17 * mm,
+            11 * mm,
+            14 * mm,
+            13 * mm,
+            15 * mm,
         ]
         scale = (page_w - 20 * mm) / sum(col_widths)
         col_widths = [w * scale for w in col_widths]
 
+        n_body_rows = len(rows)
+        table_style_cmds = [
+            ("BACKGROUND", (0, 0), (-1, 0), WHITE),
+            ("VALIGN", (0, 0), (-1, 0), "BOTTOM"),
+            ("TOPPADDING", (0, 0), (-1, 0), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+            ("LEFTPADDING", (0, 0), (-1, 0), 3),
+            ("RIGHTPADDING", (0, 0), (-1, 0), 3),
+            ("LINEBELOW", (0, 0), (-1, 0), 1, INK),
+            ("VALIGN", (0, 1), (-1, -2), "MIDDLE"),
+            ("TOPPADDING", (0, 1), (-1, -2), 6),
+            ("BOTTOMPADDING", (0, 1), (-1, -2), 6),
+            ("LEFTPADDING", (0, 1), (-1, -2), 3),
+            ("RIGHTPADDING", (0, 1), (-1, -2), 3),
+            ("LINEBELOW", (0, 1), (-1, -2), 0.5, HAIRLINE),
+            ("LINEABOVE", (0, -1), (-1, -1), 1, INK),
+            ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+            ("FONTSIZE", (0, -1), (-1, -1), 8),
+            ("ALIGN", (0, -1), (-1, -1), "CENTER"),
+            ("ALIGN", (0, -1), (0, -1), "LEFT"),
+            ("TOPPADDING", (0, -1), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, -1), (-1, -1), 7),
+        ]
+        # Zebra striping on body rows for readability
+        for i in range(1, n_body_rows + 1):
+            if i % 2 == 0:
+                table_style_cmds.append(("BACKGROUND", (0, i), (-1, i), ZEBRA))
+
         table = Table(table_data, colWidths=col_widths, repeatRows=1)
-        table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), WHITE),
-                    ("VALIGN", (0, 0), (-1, 0), "BOTTOM"),
-                    ("TOPPADDING", (0, 0), (-1, 0), 4),
-                    ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
-                    ("LEFTPADDING", (0, 0), (-1, 0), 2),
-                    ("RIGHTPADDING", (0, 0), (-1, 0), 2),
-                    ("LINEBELOW", (0, 0), (-1, 0), 1, INK),
-                    ("FONTNAME", (0, 1), (-1, -2), "Helvetica"),
-                    ("FONTSIZE", (0, 1), (-1, -2), 7.6),
-                    ("TEXTCOLOR", (0, 1), (-1, -2), INK),
-                    ("ALIGN", (0, 1), (-1, -2), "CENTER"),
-                    ("ALIGN", (0, 1), (0, -2), "LEFT"),
-                    ("VALIGN", (0, 1), (-1, -2), "MIDDLE"),
-                    ("TOPPADDING", (0, 1), (-1, -2), 6),
-                    ("BOTTOMPADDING", (0, 1), (-1, -2), 6),
-                    ("LINEBELOW", (0, 1), (-1, -2), 0.5, HAIRLINE),
-                    ("LINEABOVE", (0, -1), (-1, -1), 1, INK),
-                    ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-                    ("FONTSIZE", (0, -1), (-1, -1), 8),
-                    ("ALIGN", (0, -1), (-1, -1), "CENTER"),
-                    ("ALIGN", (0, -1), (0, -1), "LEFT"),
-                    ("TOPPADDING", (0, -1), (-1, -1), 7),
-                    ("BOTTOMPADDING", (0, -1), (-1, -1), 7),
-                ]
-            )
-        )
+        table.setStyle(TableStyle(table_style_cmds))
 
         def header_footer(canvas, doc):
             canvas.saveState()
