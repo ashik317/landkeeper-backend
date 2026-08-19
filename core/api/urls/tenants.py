@@ -21,6 +21,7 @@ from api.views.tenants import (
     MaintenanceRequestRetrieveUpdateDestroyAPIView,
     MaintenanceRequestCommentListCreateView,
     MaintenanceRequestCommentRetrieveUpdateDestroyView,
+    TenantSharedComplianceListView,
 )
 
 urlpatterns = [
@@ -123,5 +124,10 @@ urlpatterns = [
         "/maintenance-requests/<uuid:maintenance_request_alias>/comments/<uuid:comment_alias>",
         MaintenanceRequestCommentRetrieveUpdateDestroyView.as_view(),
         name="maintenance-request-comment-detail",
+    ),
+    path(
+        "/compliance-certificates",
+        TenantSharedComplianceListView.as_view(),
+        name="tenant-shared-compliance-list",
     ),
 ]

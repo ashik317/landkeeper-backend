@@ -233,7 +233,6 @@ class ComplianceAndCertification(CreatedAtUpdatedAtBaseModel):
     certificate_file = models.FileField(
         upload_to=certificate_file_upload_path, blank=True, null=True
     )
-
     # FK
     property = models.ForeignKey(
         Property, on_delete=models.CASCADE, related_name="compliance_certificates"
@@ -248,6 +247,30 @@ class ComplianceAndCertification(CreatedAtUpdatedAtBaseModel):
 
     def __str__(self):
         return f"Compliance Record {self.pk}"
+
+
+class ComplianceShare(CreatedAtUpdatedAtBaseModel):
+    compliance = models.ForeignKey(
+        ComplianceAndCertification,
+        on_delete=models.CASCADE,
+        related_name="shares"
+    )
+    tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name="compliance_shares"
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["compliance", "tenant"],
+                name="unique_compliance_tenant_share",
+            )
+        ]
+
+    def __str__(self):
+        return f"Compliance Record {self.compliance_id} Share with {self.tenant_id}"
 
 
 class UploadDocument(CreatedAtUpdatedAtBaseModel):

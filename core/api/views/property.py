@@ -2,11 +2,12 @@ import io
 from datetime import date
 
 from django.contrib.auth.hashers import make_password
+from django.core.exceptions import ValidationError
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.exceptions import NotFound
-from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
+from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView, ListAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from openpyxl import Workbook
@@ -27,6 +28,7 @@ from apps.property.models import (
     ComplianceAndCertification,
     UploadDocument,
     Finance,
+    ComplianceShare,
 )
 
 from common.permission import (
@@ -45,6 +47,7 @@ from api.serializers.property import (
     UploadDocumentSerializer,
     FinanceSerializer,
     PropertyOnboardingSerializer,
+    ComplianceShareSerializer,
 )
 
 
@@ -821,3 +824,66 @@ class PropertyPortfolioExportView(APIView):
         doc.build(story, onFirstPage=header_footer, onLaterPages=header_footer)
         buffer.seek(0)
         return buffer
+
+
+class ComplianceAndCertificationShareView(APIView):
+    serializer_class = ComplianceShareSerializer
+    permission_classes = [IsLandlord | IsAdmin]
+
+    def get_compliance(self):
+        organisation = self.request.user.get_organisation()
+        if not organisation:
+            raise NotFound("Organisation not found for the user.")
+        return get_object_or_404(
+            ComplianceAndCertification,
+            alias=self.kwargs["compliance_alias"],
+            organisation=organisation,
+        )
+
+    def _resolve_tenants(self, compliance, tenant_aliases):
+        tenants = Tenant.objects.filter(
+            alias__in=tenant_aliases,
+            organisation=compliance.organisation,
+        )
+        found_aliases = {str(a) for a in tenants.values_list("alias", flat=True)}
+        missing = [a for a in tenant_aliases if str(a) not in found_aliases]
+        if missing:
+            raise ValidationError(
+                {"tenant": f"Unknown tenant alias(es): {', '.join(missing)}"}
+            )
+        return tenants
+
+    def post(self, request, *args, **kwargs):
+        compliance = self.get_compliance()
+        serializer = ComplianceShareSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        tenant_aliases = serializer.validated_data["tenant"]
+
+        tenants = self._resolve_tenants(compliance, tenant_aliases)
+
+        for tenant in tenants:
+            ComplianceShare.objects.get_or_create(
+                compliance=compliance,
+                tenant=tenant,
+            )
+
+        return Response(
+            {"detail": "Compliance certificate shared."},
+            status=status.HTTP_200_OK,
+        )
+
+    def delete(self, request, *args, **kwargs):
+        compliance = self.get_compliance()
+        serializer = ComplianceShareSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        tenant_aliases = serializer.validated_data["tenant"]
+
+        tenants = self._resolve_tenants(compliance, tenant_aliases)
+        deleted_count, _ = ComplianceShare.objects.filter(
+            compliance=compliance, tenant__in=tenants
+        ).delete()
+
+        return Response(
+            {"detail": "Access revoked.", "revoked_count": deleted_count},
+            status=status.HTTP_200_OK,
+        )
