@@ -15,6 +15,7 @@ from api.views.property import (
     FinanceListView,
     PropertyOnboardingAPIView,
     PropertyPortfolioExportView,
+    ComplianceAndCertificationShareView,
 )
 
 urlpatterns = [
@@ -42,6 +43,11 @@ urlpatterns = [
     path(
         "/compliance/<uuid:compliance_alias>",
         ComplianceAndCertificationDetailView.as_view(),
+    ),
+    path(
+        "/compliance-certificates/<uuid:compliance_alias>/share",
+        ComplianceAndCertificationShareView.as_view(),
+        name="compliance-share",
     ),
     path(
         "/document",

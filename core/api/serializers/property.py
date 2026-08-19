@@ -18,7 +18,11 @@ from apps.property.models import (
     PropertyOwnership,
 )
 from common.models import Media, DocumentFile
-from common.serializers import PropertySlimSerializer
+from common.serializers import (
+    PropertySlimSerializer,
+    TenantSlimSerializer,
+    UserSlimSerializer,
+)
 from django.db import transaction
 
 User = get_user_model()
@@ -429,6 +433,15 @@ class ComplianceAndCertificationSerializers(serializers.ModelSerializer):
         representation = super().to_representation(instance)
         representation["property"] = PropertySlimSerializer(instance.property).data
         return representation
+
+
+class ComplianceShareSerializer(serializers.Serializer):
+    tenant = serializers.ListField(child=serializers.CharField(), allow_empty=False)
+
+    def validate_tenant(self, value):
+        seen = set()
+        deduped = [x for x in value if not (x in seen or seen.add(x))]
+        return deduped
 
 
 class UploadDocumentSerializer(serializers.ModelSerializer):

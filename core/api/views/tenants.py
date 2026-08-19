@@ -57,7 +57,7 @@ from api.serializers.tenants import (
     MaintenanceRequestSerializer,
     MaintenanceRequestCommentSerializer,
 )
-from apps.property.models import Tenant
+from apps.property.models import Tenant, ComplianceAndCertification
 from apps.tenant.enums import (
     RentPaymentStatusChoices,
     PaymentProviderChoices,
@@ -87,6 +87,7 @@ from apps.tenant.stripe_client import create_payment_intent
 from apps.tenant.utils import get_statement_date_range
 from common.models import DocumentFile
 from common.permission import IsTenant, IsLandlord, IsAdmin, IsLettingAgent
+from api.serializers.property import ComplianceAndCertificationSerializers
 
 logger = logging.getLogger("apps.tenant.payments")
 
@@ -1177,3 +1178,14 @@ class MaintenanceRequestCommentRetrieveUpdateDestroyView(RetrieveUpdateDestroyAP
         if instance.author != self.request.user:
             raise PermissionDenied("You can only delete your own comment.")
         instance.delete()
+
+
+class TenantSharedComplianceListView(ListAPIView):
+    serializer_class = ComplianceAndCertificationSerializers
+    permission_classes = [IsTenant]
+
+    def get_queryset(self):
+        tenant = self.request.user
+        return ComplianceAndCertification.objects.filter(
+            shares__tenant=tenant
+        ).order_by("-shares__created_at")

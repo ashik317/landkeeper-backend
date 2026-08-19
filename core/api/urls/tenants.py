@@ -21,6 +21,7 @@ from api.views.tenants import (
     MaintenanceRequestRetrieveUpdateDestroyAPIView,
     MaintenanceRequestCommentListCreateView,
     MaintenanceRequestCommentRetrieveUpdateDestroyView,
+    TenantSharedComplianceListView,
 )
 
 urlpatterns = [
@@ -52,17 +53,17 @@ urlpatterns = [
     path(
         "/rent-payments/rent-statement-pdf",
         RentStatementView.as_view(),
-        name="statement-full-year"
+        name="statement-full-year",
     ),
     path(
         "/payment-methods/direct-debit/setup",
         DirectDebitSetupView.as_view(),
-        name="direct-debit-setup"
+        name="direct-debit-setup",
     ),
     path(
         "/payment-methods/direct-debit/complete",
         DirectDebitCompleteView.as_view(),
-        name="direct-debit-complete"
+        name="direct-debit-complete",
     ),
     path(
         "/payment-methods/direct-debit/callback",
@@ -70,39 +71,29 @@ urlpatterns = [
         name="direct-debit-callback",
     ),
     path(
-        "/rent-payments/pay-with-card",
-        CardPaymentView.as_view(),
-        name="pay-with-card"
+        "/rent-payments/pay-with-card", CardPaymentView.as_view(), name="pay-with-card"
     ),
     path(
         "/rent-payments/pay-with-direct-debit",
         DirectDebitPaymentView.as_view(),
-        name="pay-with-direct-debit"
+        name="pay-with-direct-debit",
     ),
     path(
-    "/rent-payments/payment-history",
+        "/rent-payments/payment-history",
         PaymentHistoryView.as_view(),
-        name="payment-history"
+        name="payment-history",
     ),
-    path(
-        "/stripe",
-        StripeWebhookView.as_view(),
-        name="webhook-stripe"
-    ),
-    path(
-        "/gocardless",
-        GoCardlessWebhookView.as_view(),
-        name="webhook-gocardless"
-    ),
+    path("/stripe", StripeWebhookView.as_view(), name="webhook-stripe"),
+    path("/gocardless", GoCardlessWebhookView.as_view(), name="webhook-gocardless"),
     path(
         "/property-and-tenancy-details",
         PropertyTenancyListView.as_view(),
-        name="property-details"
+        name="property-details",
     ),
     path(
         "/financial-overview",
         FinancialOverviewListView.as_view(),
-        name="financial-overview"
+        name="financial-overview",
     ),
     path(
         "/maintenance-requests",
@@ -123,5 +114,10 @@ urlpatterns = [
         "/maintenance-requests/<uuid:maintenance_request_alias>/comments/<uuid:comment_alias>",
         MaintenanceRequestCommentRetrieveUpdateDestroyView.as_view(),
         name="maintenance-request-comment-detail",
+    ),
+    path(
+        "/compliance-certificates",
+        TenantSharedComplianceListView.as_view(),
+        name="tenant-shared-compliance-list",
     ),
 ]
