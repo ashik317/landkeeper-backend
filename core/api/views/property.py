@@ -7,7 +7,11 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.exceptions import NotFound
-from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView, ListAPIView
+from rest_framework.generics import (
+    ListCreateAPIView,
+    RetrieveUpdateDestroyAPIView,
+    ListAPIView,
+)
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from openpyxl import Workbook
@@ -78,10 +82,11 @@ class PropertyListView(ListCreateAPIView):
         else:
             queryset = queryset.filter(
                 property_permissions__user=self.request.user,
+                property_permissions__organisation=organisation,
                 property_permissions__can_view=True,
             ).distinct()
 
-        return queryset
+            return queryset
 
     def perform_create(self, serializer):
         organisation = self.request.user.get_organisation()
@@ -132,8 +137,11 @@ class MortgageListView(ListCreateAPIView):
         else:
             queryset = queryset.filter(
                 mortgage_permissions__user=self.request.user,
+                mortgage_permissions__organisation=organisation,
                 mortgage_permissions__can_view=True,
             ).distinct()
+
+            return queryset
 
     def perform_create(self, serializer):
         organisation = self.request.user.get_organisation()
