@@ -157,7 +157,6 @@ class UserSerializer(serializers.ModelSerializer):
         password = validated_data.pop("password")
         user = User(**validated_data)
         user.set_password(password)
-        user.is_password_set = True
         user.save()
         return user
 
@@ -165,7 +164,6 @@ class UserSerializer(serializers.ModelSerializer):
         password = validated_data.pop("password", None)
         if password:
             instance.set_password(password)
-            instance.is_password_set = True
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
@@ -346,6 +344,7 @@ class TenantAcceptInviteSerializer(serializers.Serializer):
 
         tenant.set_password(password)
         tenant.is_active = True
-        tenant.save(update_fields=["password", "is_active"])
+        tenant.is_password_set = True
+        tenant.save(update_fields=["password", "is_active", "is_password_set"])
 
         return tenant

@@ -216,6 +216,7 @@ class GoogleLoginView(SocialLoginView):
             email = email.lower().strip()
 
             tenant = Tenant.objects.filter(email__iexact=email).first()
+
             if tenant is not None:
                 return self._tenant_login_response(tenant)
 
@@ -407,9 +408,6 @@ class SetForgotPasswordView(APIView):
             )
 
         user.set_password(new_password)
-
-        if isinstance(user, Tenant):
-            user.is_password_set = True
 
         user.save()
         return Response(

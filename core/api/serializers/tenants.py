@@ -101,12 +101,6 @@ class RentPaymentSerializer(serializers.ModelSerializer):
         ]
 
 
-class TenantSlimSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Tenant
-        fields = ["id", "first_name", "last_name", "email"]
-
-
 class LandlordRentPaymentCreateSerializer(serializers.ModelSerializer):
     tenant = serializers.SlugRelatedField(
         slug_field="alias",
