@@ -7,4 +7,7 @@ class NotificationType(models.TextChoices):
     NEW_TICKET_COMMENT = "NEW_TICKET_COMMENT", _("New Ticket Comment")
     TICKET_STATUS_CHANGED = "TICKET_STATUS_CHANGED", _("Ticket Status Changed")
     NEW_MAINTENANCE_REQUEST = "NEW_MAINTENANCE_REQUEST", _("New Maintenance Request")
-    MAINTENANCE_STATUS_CHANGED = "MAINTENANCE_STATUS_CHANGED", _("Maintenance Status Changed")
+    MAINTENANCE_STATUS_CHANGED = "MAINTENANCE_STATUS_CHANGED", _(
+        "Maintenance Status Changed"
+    )
+    NEW_MAINTENANCE_COMMENT = "NEW_MAINTENANCE_COMMENT", _("New Maintenance Comment")

@@ -15,7 +15,7 @@ from apps.notification.utils import (
 from apps.organisation.enums import OrganisationRoleChoices
 from apps.organisation.models import OrganisationUser
 from apps.property.models import Tenant
-from apps.tenant.models import MaintenanceRequest
+from apps.tenant.models import MaintenanceRequest, MaintenanceRequestComment
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,11 @@ def create_notification_task(
                         "description": notification.message,
                         "data": enrich_notification_data(notification.data),
                         "is_read": notification.is_read,
-                        "read_at": notification.read_at.isoformat() if notification.read_at else None,
+                        "read_at": (
+                            notification.read_at.isoformat()
+                            if notification.read_at
+                            else None
+                        ),
                         "created_at": notification.created_at.isoformat(),
                     },
                 },
@@ -65,7 +69,9 @@ def create_notification_task(
 
         return str(notification.alias)
     except Exception as exc:
-        logger.exception("Failed to create notification for recipient_id=%s", recipient_id)
+        logger.exception(
+            "Failed to create notification for recipient_id=%s", recipient_id
+        )
         raise self.retry(exc=exc)
 
 
@@ -82,7 +88,8 @@ def push_tenant_notification_task(
         if channel_layer is None:
             logger.warning(
                 "push_tenant_notification_task: no channel layer configured, "
-                "skipping live push for tenant_id=%s", tenant_id,
+                "skipping live push for tenant_id=%s",
+                tenant_id,
             )
             return
 
@@ -102,7 +109,8 @@ def push_tenant_notification_task(
         )
     except Exception as exc:
         logger.exception(
-            "Failed to push live notification for tenant_id=%s", tenant_id,
+            "Failed to push live notification for tenant_id=%s",
+            tenant_id,
         )
         raise self.retry(exc=exc)
 
@@ -113,14 +121,18 @@ def notify_ticket_created_task(ticket_id):
     try:
         ticket = SupportTicket.objects.select_related("created_by").get(pk=ticket_id)
     except SupportTicket.DoesNotExist:
-        logger.warning("notify_ticket_created_task: ticket %s no longer exists", ticket_id)
+        logger.warning(
+            "notify_ticket_created_task: ticket %s no longer exists", ticket_id
+        )
         return
 
     for admin in get_support_admins():
         create_notification_task.delay(
             recipient_id=admin.id,
             notification_type=NotificationType.NEW_SUPPORT_TICKET,
-            message=f"New support ticket: {ticket.ticket_id} – {ticket.subject or ''}".strip(" –"),
+            message=f"New support ticket: {ticket.ticket_id} – {ticket.subject or ''}".strip(
+                " –"
+            ),
             data={"type": "SUPPORT_TICKET", "alias": str(ticket.alias)},
             actor_id=ticket.created_by_id,
         )
@@ -132,7 +144,9 @@ def notify_ticket_status_updated_task(ticket_id, updated_by_id=None):
     try:
         ticket = SupportTicket.objects.select_related("created_by").get(pk=ticket_id)
     except SupportTicket.DoesNotExist:
-        logger.warning("notify_ticket_status_updated_task: ticket %s no longer exists", ticket_id)
+        logger.warning(
+            "notify_ticket_status_updated_task: ticket %s no longer exists", ticket_id
+        )
         return
 
     if not ticket.created_by_id:
@@ -151,13 +165,20 @@ def notify_ticket_status_updated_task(ticket_id, updated_by_id=None):
 def notify_new_comment_task(comment_id):
     SupportTicketComment = apps.get_model("supportticket", "SupportTicketComment")
     try:
-        comment = SupportTicketComment.objects.select_related("ticket", "author").get(pk=comment_id)
+        comment = SupportTicketComment.objects.select_related("ticket", "author").get(
+            pk=comment_id
+        )
     except SupportTicketComment.DoesNotExist:
-        logger.warning("notify_new_comment_task: comment %s no longer exists", comment_id)
+        logger.warning(
+            "notify_new_comment_task: comment %s no longer exists", comment_id
+        )
         return
 
     ticket = comment.ticket
-    recipient_ids = {ticket.created_by_id, *get_support_admins().values_list("id", flat=True)}
+    recipient_ids = {
+        ticket.created_by_id,
+        *get_support_admins().values_list("id", flat=True),
+    }
     recipient_ids.discard(comment.author_id)
     recipient_ids.discard(None)
 
@@ -182,37 +203,30 @@ def cleanup_old_notifications(days=30):
     logger.info("cleanup_old_notifications: deleted %s notifications", deleted_count)
     return deleted_count
 
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=10)
 def notify_maintenance_request_created_task(
     self,
     maintenance_request_id,
 ):
     try:
-        maintenance_request = (
-            MaintenanceRequest.objects
-            .select_related(
-                "tenant",
-                "property",
-                "organisation",
-            )
-            .get(pk=maintenance_request_id)
-        )
+        maintenance_request = MaintenanceRequest.objects.select_related(
+            "tenant",
+            "property",
+            "organisation",
+        ).get(pk=maintenance_request_id)
 
         organisation = maintenance_request.organisation
 
-        organisation_users = (
-            OrganisationUser.objects
-            .filter(
-                organisation=organisation,
-                role__in=[
-                    OrganisationRoleChoices.LANDLORD,
-                    OrganisationRoleChoices.ADMIN,
-                    OrganisationRoleChoices.LETTING_AGENT,
-                ],
-                user__is_active=True,
-            )
-            .select_related("user")
-        )
+        organisation_users = OrganisationUser.objects.filter(
+            organisation=organisation,
+            role__in=[
+                OrganisationRoleChoices.LANDLORD,
+                OrganisationRoleChoices.ADMIN,
+                OrganisationRoleChoices.LETTING_AGENT,
+            ],
+            user__is_active=True,
+        ).select_related("user")
 
         message = (
             f"New maintenance request from "
@@ -263,11 +277,9 @@ def notify_maintenance_request_created_task(
 @shared_task(bind=True, max_retries=3, default_retry_delay=10)
 def send_maintenance_request_email(self, maintenance_request_id, user_id):
     try:
-        maintenance_request = (
-            MaintenanceRequest.objects
-            .select_related("tenant", "property", "organisation")
-            .get(pk=maintenance_request_id)
-        )
+        maintenance_request = MaintenanceRequest.objects.select_related(
+            "tenant", "property", "organisation"
+        ).get(pk=maintenance_request_id)
         user = User.objects.get(pk=user_id, is_active=True)
 
         send_maintenance_request_created_email(maintenance_request, user)
@@ -287,15 +299,11 @@ def notify_maintenance_status_changed_task(
     updated_by_id=None,
 ):
     try:
-        maintenance_request = (
-            MaintenanceRequest.objects
-            .select_related(
-                "tenant",
-                "property",
-                "organisation",
-            )
-            .get(pk=maintenance_request_id)
-        )
+        maintenance_request = MaintenanceRequest.objects.select_related(
+            "tenant",
+            "property",
+            "organisation",
+        ).get(pk=maintenance_request_id)
 
         tenant = maintenance_request.tenant
 
@@ -349,14 +357,13 @@ def notify_maintenance_status_changed_task(
         )
         raise self.retry(exc=exc)
 
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=10)
 def send_maintenance_status_email(self, maintenance_request_id, tenant_id):
     try:
-        maintenance_request = (
-            MaintenanceRequest.objects
-            .select_related("tenant", "property", "organisation")
-            .get(pk=maintenance_request_id)
-        )
+        maintenance_request = MaintenanceRequest.objects.select_related(
+            "tenant", "property", "organisation"
+        ).get(pk=maintenance_request_id)
         tenant = Tenant.objects.get(pk=tenant_id, is_active=True)
 
         send_maintenance_status_changed_email(maintenance_request, tenant)
@@ -365,5 +372,87 @@ def send_maintenance_status_email(self, maintenance_request_id, tenant_id):
         logger.exception(
             "Failed to send maintenance status email for request %s",
             maintenance_request_id,
+        )
+        raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=10)
+def notify_maintenance_comment_created_task(self, comment_id):
+    try:
+        comment = MaintenanceRequestComment.objects.select_related(
+            "staff_author",
+            "tenant_author",
+            "maintenance_request",
+            "maintenance_request__tenant",
+            "maintenance_request__property",
+            "maintenance_request__organisation",
+        ).get(pk=comment_id)
+
+        maintenance_request = comment.maintenance_request
+        organisation = maintenance_request.organisation
+
+        data = {
+            "type": "MAINTENANCE_COMMENT",
+            "comment_id": comment.id,
+            "alias": str(maintenance_request.alias),
+        }
+
+        if comment.staff_author_id:
+            tenant = maintenance_request.tenant
+
+            if not tenant or not tenant.is_active:
+                return
+
+            message = (
+                f"New comment from {maintenance_request.property} landlord "
+                f"on your maintenance request."
+            )
+
+            Notification.objects.create(
+                tenant=tenant,
+                notification_type=NotificationType.NEW_MAINTENANCE_COMMENT,
+                message=message,
+                data=data,
+            )
+
+            push_tenant_notification_task.delay(
+                tenant_id=tenant.id,
+                notification_type=NotificationType.NEW_MAINTENANCE_COMMENT,
+                message=message,
+                data=data,
+            )
+
+        else:
+            message = (
+                f"New comment from {comment.tenant_author.get_full_name()} "
+                f"on maintenance request for {maintenance_request.property}."
+            )
+
+            landlord_users = OrganisationUser.objects.filter(
+                organisation=organisation,
+                role=OrganisationRoleChoices.LANDLORD,
+                user__is_active=True,
+            ).select_related("user")
+
+            for organisation_user in landlord_users:
+                create_notification_task.delay(
+                    recipient_id=organisation_user.user_id,
+                    notification_type=NotificationType.NEW_MAINTENANCE_COMMENT,
+                    message=message,
+                    data=data,
+                    actor_id=None,
+                )
+
+    except MaintenanceRequestComment.DoesNotExist:
+        logger.warning(
+            "Maintenance request comment %s no longer exists",
+            comment_id,
+        )
+        return
+
+    except Exception as exc:
+        logger.exception(
+            "Failed to notify about maintenance request comment %s",
+            comment_id,
         )
         raise self.retry(exc=exc)
