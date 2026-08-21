@@ -9,7 +9,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 
 from apps.supportticket.models import SupportTicket
-from apps.tenant.models import MaintenanceRequest
+from apps.tenant.models import MaintenanceRequest, MaintenanceRequestComment
 
 
 def enrich_notification_data(data):
@@ -18,37 +18,59 @@ def enrich_notification_data(data):
     if data.get("type") == "SUPPORT_TICKET":
         ticket = SupportTicket.objects.filter(alias=data.get("alias")).first()
         data["is_deleted"] = ticket.is_deleted if ticket else True
+
     elif data.get("type") == "MAINTENANCE_REQUEST":
-        maintenance_request = MaintenanceRequest.objects.filter(alias=data.get("alias")).first()
-        data["is_deleted"] = maintenance_request is None
+        if data.get("comment_id"):
+            comment = MaintenanceRequestComment.objects.filter(
+                pk=data["comment_id"]
+            ).first()
+            data["is_deleted"] = comment is None
+        else:
+            maintenance_request = MaintenanceRequest.objects.filter(
+                alias=data.get("alias")
+            ).first()
+            data["is_deleted"] = maintenance_request is None
         data.pop("category", None)
+
+    data.pop("comment_id", None)
 
     return data
 
 
 def _styles():
     styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(
-        name="EmergencyBanner",
-        fontSize=11,
-        textColor=colors.HexColor("#b91c1c"),
-        fontName="Helvetica-Bold",
-    ))
+    styles.add(
+        ParagraphStyle(
+            name="EmergencyBanner",
+            fontSize=11,
+            textColor=colors.HexColor("#b91c1c"),
+            fontName="Helvetica-Bold",
+        )
+    )
     return styles
 
 
 def _build_maintenance_request_pdf(maintenance_request):
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=20 * mm, bottomMargin=20 * mm)
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4, topMargin=20 * mm, bottomMargin=20 * mm
+    )
     styles = _styles()
     elements = []
 
     if maintenance_request.is_emergency:
-        elements.append(Paragraph("&#9888; EMERGENCY REQUEST", styles["EmergencyBanner"]))
+        elements.append(
+            Paragraph("&#9888; EMERGENCY REQUEST", styles["EmergencyBanner"])
+        )
         elements.append(Spacer(1, 10))
 
     elements.append(Paragraph("New Maintenance Request", styles["Title"]))
-    elements.append(Paragraph(f"Submitted by {maintenance_request.tenant.get_full_name()}", styles["Normal"]))
+    elements.append(
+        Paragraph(
+            f"Submitted by {maintenance_request.tenant.get_full_name()}",
+            styles["Normal"],
+        )
+    )
     elements.append(Spacer(1, 16))
 
     data = [
@@ -60,15 +82,19 @@ def _build_maintenance_request_pdf(maintenance_request):
     ]
 
     table = Table(data, colWidths=[100, 320])
-    table.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-        ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#6b7280")),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e5e7eb")),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-        ("LEFTPADDING", (0, 0), (-1, -1), 10),
-    ]))
+    table.setStyle(
+        TableStyle(
+            [
+                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#6b7280")),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e5e7eb")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+            ]
+        )
+    )
     elements.append(table)
 
     doc.build(elements)
@@ -78,12 +104,16 @@ def _build_maintenance_request_pdf(maintenance_request):
 
 def _build_maintenance_status_pdf(maintenance_request, status_display):
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=20 * mm, bottomMargin=20 * mm)
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4, topMargin=20 * mm, bottomMargin=20 * mm
+    )
     styles = _styles()
     elements = []
 
     elements.append(Paragraph("Maintenance Request Updated", styles["Title"]))
-    elements.append(Paragraph(f"Status changed to: <b>{status_display}</b>", styles["Normal"]))
+    elements.append(
+        Paragraph(f"Status changed to: <b>{status_display}</b>", styles["Normal"])
+    )
     elements.append(Spacer(1, 16))
 
     data = [
@@ -93,15 +123,19 @@ def _build_maintenance_status_pdf(maintenance_request, status_display):
     ]
 
     table = Table(data, colWidths=[100, 320])
-    table.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-        ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#6b7280")),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e5e7eb")),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-        ("LEFTPADDING", (0, 0), (-1, -1), 10),
-    ]))
+    table.setStyle(
+        TableStyle(
+            [
+                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#6b7280")),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e5e7eb")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+            ]
+        )
+    )
     elements.append(table)
 
     doc.build(elements)

@@ -347,7 +347,7 @@ class MaintenanceRequestSerializer(serializers.ModelSerializer):
     )
 
     request_id = serializers.SerializerMethodField()
-    tenant = TenantSlimSerializer()
+    tenant = TenantSlimSerializer(read_only=True)
     property = serializers.SerializerMethodField()
     organisation = serializers.SerializerMethodField()
 

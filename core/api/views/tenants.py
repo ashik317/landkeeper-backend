@@ -82,6 +82,8 @@ from apps.tenant.models import (
 from apps.notification.tasks import (
     notify_maintenance_status_changed_task,
     notify_maintenance_request_created_task,
+    notify_maintenance_comment_created_task,
+    mark_comment_notifications_deleted_task,
 )
 from apps.tenant.stripe_client import create_payment_intent
 from apps.tenant.utils import get_statement_date_range
@@ -1126,9 +1128,17 @@ class MaintenanceRequestCommentListCreateView(ListCreateAPIView):
         user = self.request.user
         maintenance_request = self.get_maintenance_request()
         if isinstance(user, Tenant):
-            serializer.save(tenant_author=user, maintenance_request=maintenance_request)
+            comment = serializer.save(
+                tenant_author=user, maintenance_request=maintenance_request
+            )
         else:
-            serializer.save(staff_author=user, maintenance_request=maintenance_request)
+            comment = serializer.save(
+                staff_author=user, maintenance_request=maintenance_request
+            )
+
+        transaction.on_commit(
+            lambda: notify_maintenance_comment_created_task.delay(comment.id)
+        )
 
 
 class MaintenanceRequestCommentRetrieveUpdateDestroyView(RetrieveUpdateDestroyAPIView):
@@ -1177,7 +1187,9 @@ class MaintenanceRequestCommentRetrieveUpdateDestroyView(RetrieveUpdateDestroyAP
     def perform_destroy(self, instance):
         if instance.author != self.request.user:
             raise PermissionDenied("You can only delete your own comment.")
+        comment_id = instance.id
         instance.delete()
+        mark_comment_notifications_deleted_task.delay(comment_id)
 
 
 class TenantSharedComplianceListView(ListAPIView):
