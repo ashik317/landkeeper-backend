@@ -392,9 +392,10 @@ def notify_maintenance_comment_created_task(self, comment_id):
         organisation = maintenance_request.organisation
 
         data = {
-            "type": "MAINTENANCE_COMMENT",
-            "comment_id": comment.id,
+            "type": "MAINTENANCE_REQUEST",
             "alias": str(maintenance_request.alias),
+            "comment_id": comment.id,
+            "is_deleted": False,
         }
 
         if comment.staff_author_id:
@@ -454,5 +455,21 @@ def notify_maintenance_comment_created_task(self, comment_id):
         logger.exception(
             "Failed to notify about maintenance request comment %s",
             comment_id,
+        )
+        raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=10)
+def mark_comment_notifications_deleted_task(self, comment_id):
+    try:
+        notifications = Notification.objects.filter(data__comment_id=comment_id)
+
+        for notification in notifications:
+            notification.data = {**notification.data, "is_deleted": True}
+            notification.save(update_fields=["data"])
+
+    except Exception as exc:
+        logger.exception(
+            "Failed to mark notifications deleted for comment_id=%s", comment_id
         )
         raise self.retry(exc=exc)

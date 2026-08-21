@@ -83,6 +83,7 @@ from apps.notification.tasks import (
     notify_maintenance_status_changed_task,
     notify_maintenance_request_created_task,
     notify_maintenance_comment_created_task,
+    mark_comment_notifications_deleted_task,
 )
 from apps.tenant.stripe_client import create_payment_intent
 from apps.tenant.utils import get_statement_date_range
@@ -1186,7 +1187,9 @@ class MaintenanceRequestCommentRetrieveUpdateDestroyView(RetrieveUpdateDestroyAP
     def perform_destroy(self, instance):
         if instance.author != self.request.user:
             raise PermissionDenied("You can only delete your own comment.")
+        comment_id = instance.id
         instance.delete()
+        mark_comment_notifications_deleted_task.delay(comment_id)
 
 
 class TenantSharedComplianceListView(ListAPIView):
