@@ -7,6 +7,7 @@ import uuid
 from io import BytesIO
 import gocardless_pro
 import stripe
+from rest_framework.exceptions import NotFound
 from datetime import date, timedelta
 from django.conf import settings
 from django.db import IntegrityError, transaction
@@ -89,7 +90,10 @@ from apps.tenant.stripe_client import create_payment_intent
 from apps.tenant.utils import get_statement_date_range
 from common.models import DocumentFile
 from common.permission import IsTenant, IsLandlord, IsAdmin, IsLettingAgent
-from api.serializers.property import ComplianceAndCertificationSerializers
+from api.serializers.property import (
+    ComplianceAndCertificationSerializers,
+    TenantSerializer,
+)
 
 logger = logging.getLogger("apps.tenant.payments")
 
@@ -1201,3 +1205,22 @@ class TenantSharedComplianceListView(ListAPIView):
         return ComplianceAndCertification.objects.filter(
             shares__tenant=tenant
         ).order_by("-shares__created_at")
+
+
+class TenantListAPiView(ListAPIView):
+    serializer_class = TenantSerializer
+    permission_classes = [IsLandlord | IsAdmin]
+    pagination_class = None
+    search_fields = [
+        "property__property_name",
+        "first_name",
+        "last_name",
+        "email",
+        "phone",
+    ]
+
+    def get_queryset(self):
+        organisation = self.request.user.get_organisation()
+        if not organisation:
+            raise NotFound("Organisation not found for the user.")
+        return Tenant.objects.filter(organisation=organisation).order_by("-created_at")
