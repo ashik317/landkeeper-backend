@@ -82,12 +82,14 @@ class PropertySerializer(serializers.ModelSerializer):
     documents = MediaSerializer(many=True, read_only=True)
     shareholder = PropertyOwnershipSerializer(many=True, required=False)
     landlord = serializers.SerializerMethodField()
+    can_edit = serializers.SerializerMethodField()
 
     class Meta:
         model = Property
         fields = [
             "id",
             "alias",
+            "can_edit",
             "landlord",
             "property_name",
             "property_owner",
@@ -142,6 +144,30 @@ class PropertySerializer(serializers.ModelSerializer):
             "ni_number": user.ni_number,
             "utr_number": user.utr_number,
         }
+
+    def get_can_edit(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+
+        if not user or not user.is_authenticated:
+            return False
+
+        organisation = user.get_organisation()
+
+        if not organisation:
+            return False
+
+        if user.organisation_users.filter(
+            organisation=organisation,
+            role__in=[OrganisationRoleChoices.LANDLORD, OrganisationRoleChoices.ADMIN],
+        ).exists():
+            return True
+
+        return user.permissions.filter(
+            property=obj,
+            organisation=organisation,
+            can_edit=True,
+        ).exists()
 
     def validate(self, attrs):
         property_owner = attrs.get(
@@ -256,11 +282,13 @@ class MortgageSerializers(serializers.ModelSerializer):
     uploaded_documents = DocumentFileSerializer(
         source="mortgage_documents", many=True, read_only=True
     )
+    can_edit = serializers.SerializerMethodField()
 
     class Meta:
         model = Mortgage
         fields = [
             "alias",
+            "can_edit",
             "property",
             "lender_name",
             "interest_rate_type",
@@ -308,6 +336,30 @@ class MortgageSerializers(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     f"{file.name} has an unsupported file type."
                 )
+
+    def get_can_edit(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+
+        if not user or not user.is_authenticated:
+            return False
+
+        organisation = user.get_organisation()
+
+        if not organisation:
+            return False
+
+        if user.organisation_users.filter(
+            organisation=organisation,
+            role__in=[OrganisationRoleChoices.LANDLORD, OrganisationRoleChoices.ADMIN],
+        ).exists():
+            return True
+
+        return user.permissions.filter(
+            mortgage=obj,
+            organisation=organisation,
+            can_edit=True,
+        ).exists()
 
     def create(self, validated_data):
         uploaded_files = validated_data.pop("mortgage_documents", [])

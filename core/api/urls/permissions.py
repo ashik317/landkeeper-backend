@@ -5,6 +5,7 @@ from ..views.permissions import (
     PermissionDetailView,
     PropertyPermissionListAPIView,
     MortgagePermissionListAPIView,
+    BulkPropertyPermissionView,
 )
 
 urlpatterns = [
@@ -19,6 +20,10 @@ urlpatterns = [
     path(
         "/property/<uuid:property_alias>",
         PropertyPermissionListAPIView.as_view(),
+    ),
+    path(
+        "/user/<uuid:user_alias>/bulk-property",
+        BulkPropertyPermissionView.as_view(),
     ),
     path(
         "/mortgage/<uuid:mortgage_alias>",

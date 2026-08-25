@@ -1,10 +1,12 @@
 from rest_framework import serializers
 
 from apps.authentication.models import Permission, User
-from apps.property.models import PropertyOwnership, Property, Mortgage
-from apps.property.enums import PropertyOwnerType
+from apps.property.models import Property, Mortgage
 
-from common.serializers import UserSlimSerializer
+from common.serializers import (
+    UserSlimSerializer,
+    PropertySlimSerializer,
+)
 
 
 class PermissionSerializer(serializers.ModelSerializer):
@@ -126,32 +128,40 @@ class PermissionSerializer(serializers.ModelSerializer):
         return rep
 
 
-class PropertyOwnershipSerializer(serializers.ModelSerializer):
+class BulkPropertyPermissionSerializer(serializers.ModelSerializer):
+    property = serializers.ListField(
+        child=serializers.UUIDField(),
+        allow_empty=False,
+        write_only=True,
+    )
+    can_view = serializers.BooleanField(default=False)
+    can_edit = serializers.BooleanField(default=False)
+
     class Meta:
-        model = PropertyOwnership
+        model = Permission
         fields = [
-            "shareholder_name",
-            "owner_name",
-            "share_percentage",
+            "property",
+            "property",
+            "can_view",
+            "can_edit",
         ]
-        extra_kwargs = {
-            "owner_name": {"required": False, "allow_null": True, "allow_blank": True},
-            "shareholder_name": {
-                "required": False,
-                "allow_null": True,
-                "allow_blank": True,
-            },
-            "share_percentage": {"required": False, "allow_null": True},
-        }
 
     def to_representation(self, instance):
-        rep = {}
-        property_owner = getattr(instance.property, "property_owner", None)
+        rep = super().to_representation(instance)
 
-        if property_owner == PropertyOwnerType.COMPANY:
-            rep["shareholder_name"] = instance.shareholder_name
-            rep["share_percentage"] = instance.share_percentage
-        else:
-            rep["owner_name"] = instance.owner_name
+        rep["property"] = PropertySlimSerializer(
+            instance.property,
+            context={
+                **self.context,
+            },
+        ).data
 
         return rep
+
+    def validate(self, attrs):
+        if attrs["can_edit"] and not attrs["can_view"]:
+            raise serializers.ValidationError(
+                {"can_edit": "can_view must be true when can_edit is true."}
+            )
+
+        return attrs

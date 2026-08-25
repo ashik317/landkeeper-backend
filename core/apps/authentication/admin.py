@@ -5,7 +5,6 @@ from django.utils.translation import gettext_lazy as _
 from apps.authentication.models import User, InviteUser, Permission
 
 admin.site.register(InviteUser)
-admin.site.register(Permission)
 
 
 @admin.register(User)
@@ -72,3 +71,17 @@ class UserAdmin(BaseUserAdmin):
     )
 
     USERNAME_FIELD = "email"
+
+
+@admin.register(Permission)
+class PermissionAdmin(admin.ModelAdmin):
+    list_display = [
+        "alias",
+        "user",
+        "property",
+        "mortgage",
+        "can_view",
+        "can_edit",
+    ]
+    search_fields = ["alias", "user__email", "property__name", "mortgage__name"]
+    list_filter = ["can_view", "can_edit"]
