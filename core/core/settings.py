@@ -64,6 +64,7 @@ PROJECT_APPS = [
     "apps.tenant.apps.TenantConfig",
     "apps.notification.apps.NotificationConfig",
     "apps.document.apps.DocumentConfig",
+    "apps.referral.apps.ReferralConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PROJECT_APPS
