@@ -22,6 +22,8 @@ from api.views.tenants import (
     MaintenanceRequestCommentListCreateView,
     MaintenanceRequestCommentRetrieveUpdateDestroyView,
     TenantSharedComplianceListView,
+    TenantListAPiView,
+    SharedDocumentTenantListAPIView,
 )
 
 urlpatterns = [
@@ -120,4 +122,5 @@ urlpatterns = [
         TenantSharedComplianceListView.as_view(),
         name="tenant-shared-compliance-list",
     ),
+    path("/list", TenantListAPiView.as_view(), name="tenant-list"),
 ]

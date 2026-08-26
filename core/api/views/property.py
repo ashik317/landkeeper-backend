@@ -840,8 +840,10 @@ class ComplianceAndCertificationShareView(APIView):
 
     def get_compliance(self):
         organisation = self.request.user.get_organisation()
+
         if not organisation:
             raise NotFound("Organisation not found for the user.")
+
         return get_object_or_404(
             ComplianceAndCertification,
             alias=self.kwargs["compliance_alias"],
@@ -853,21 +855,44 @@ class ComplianceAndCertificationShareView(APIView):
             alias__in=tenant_aliases,
             organisation=compliance.organisation,
         )
-        found_aliases = {str(a) for a in tenants.values_list("alias", flat=True)}
-        missing = [a for a in tenant_aliases if str(a) not in found_aliases]
+
+        found_aliases = {
+            str(alias) for alias in tenants.values_list("alias", flat=True)
+        }
+
+        missing = [alias for alias in tenant_aliases if str(alias) not in found_aliases]
+
         if missing:
             raise ValidationError(
                 {"tenant": f"Unknown tenant alias(es): {', '.join(missing)}"}
             )
+
         return tenants
+
+    def get(self, request, *args, **kwargs):
+        compliance = self.get_compliance()
+
+        tenants = Tenant.objects.filter(
+            compliance_shares__compliance=compliance,
+            organisation=compliance.organisation,
+        ).order_by("-created_at")
+
+        serializer = TenantSerializer(tenants, many=True)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def post(self, request, *args, **kwargs):
         compliance = self.get_compliance()
+
         serializer = ComplianceShareSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
         tenant_aliases = serializer.validated_data["tenant"]
 
-        tenants = self._resolve_tenants(compliance, tenant_aliases)
+        tenants = self._resolve_tenants(
+            compliance,
+            tenant_aliases,
+        )
 
         for tenant in tenants:
             ComplianceShare.objects.get_or_create(
@@ -882,16 +907,26 @@ class ComplianceAndCertificationShareView(APIView):
 
     def delete(self, request, *args, **kwargs):
         compliance = self.get_compliance()
+
         serializer = ComplianceShareSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
         tenant_aliases = serializer.validated_data["tenant"]
 
-        tenants = self._resolve_tenants(compliance, tenant_aliases)
+        tenants = self._resolve_tenants(
+            compliance,
+            tenant_aliases,
+        )
+
         deleted_count, _ = ComplianceShare.objects.filter(
-            compliance=compliance, tenant__in=tenants
+            compliance=compliance,
+            tenant__in=tenants,
         ).delete()
 
         return Response(
-            {"detail": "Access revoked.", "revoked_count": deleted_count},
+            {
+                "detail": "Access revoked.",
+                "revoked_count": deleted_count,
+            },
             status=status.HTTP_200_OK,
         )
