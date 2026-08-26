@@ -10,4 +10,5 @@ urlpatterns = [
     path("/notifications", include("api.urls.notifications")),
     path("/templates", include("api.urls.documents")),
     path("/permissions", include("api.urls.permissions")),
+    path("/ambassador", include("api.urls.ambassador")),
 ]
