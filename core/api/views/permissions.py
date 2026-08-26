@@ -230,3 +230,101 @@ class BulkPropertyPermissionView(ListCreateAPIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class BulkMortgagePermissionView(ListCreateAPIView):
+    serializer_class = BulkPropertyPermissionSerializer
+    permission_classes = [IsLandlord]
+
+    def get_queryset(self):
+        organisation = self.request.user.get_organisation()
+
+        if not organisation:
+            raise NotFound("Organisation not found for the user.")
+
+        user_alias = self.kwargs.get("user_alias")
+        user = get_object_or_404(
+            User,
+            alias=user_alias,
+        )
+
+        return Permission.objects.filter(
+            organisation=organisation,
+            user=user,
+            mortgage__isnull=False,
+        ).order_by("-created_at")
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        organisation = request.user.get_organisation()
+
+        if not organisation:
+            raise NotFound("Organisation not found for the user.")
+
+        user = get_object_or_404(
+            User,
+            alias=self.kwargs.get("user_alias"),
+        )
+
+        mortgage_aliases = serializer.validated_data["mortgage"]
+
+        mortgages = Mortgage.objects.filter(
+            alias__in=mortgage_aliases,
+            organisation=organisation,
+        )
+
+        if mortgages.count() != len(set(mortgage_aliases)):
+            raise ValidationError(
+                {"mortgage": ("One or more mortgages were not found.")}
+            )
+
+        can_view = serializer.validated_data["can_view"]
+        can_edit = serializer.validated_data["can_edit"]
+
+        with transaction.atomic():
+
+            for mortgage_obj in mortgages:
+
+                # Find existing adviser assignment
+                existing_permission = (
+                    Permission.objects.filter(
+                        organisation=organisation,
+                        mortgage=mortgage_obj,
+                    )
+                    .exclude(user=user)
+                    .first()
+                )
+
+                if existing_permission:
+                    raise ValidationError(
+                        {
+                            "mortgage": (
+                                f"Mortgage '{mortgage_obj.mortgage_name}' "
+                                "is already assigned to another "
+                                "user."
+                            )
+                        }
+                    )
+
+                # Create/update new adviser permission
+                Permission.objects.update_or_create(
+                    organisation=organisation,
+                    user=user,
+                    mortgage=mortgage_obj,
+                    defaults={
+                        "can_view": can_view,
+                        "can_edit": can_edit,
+                        "property": None,
+                    },
+                )
+
+        return Response(
+            {
+                "message": ("Mortgage permissions updated successfully."),
+                "user": user.alias,
+                "mortgages_count": mortgages.count(),
+            },
+            status=status.HTTP_200_OK,
+        )

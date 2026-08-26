@@ -23,7 +23,6 @@ from api.views.tenants import (
     MaintenanceRequestCommentRetrieveUpdateDestroyView,
     TenantSharedComplianceListView,
     TenantListAPiView,
-    SharedDocumentTenantListAPIView,
 )
 
 urlpatterns = [

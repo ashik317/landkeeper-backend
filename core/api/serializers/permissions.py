@@ -6,6 +6,7 @@ from apps.property.models import Property, Mortgage
 from common.serializers import (
     UserSlimSerializer,
     PropertySlimSerializer,
+    MortgageSlimSerializer,
 )
 
 
@@ -113,6 +114,54 @@ class PermissionSerializer(serializers.ModelSerializer):
                     }
                 )
 
+        # -----------------------------------------
+        # Property can only belong to ONE user
+        # -----------------------------------------
+        if property_obj is not None:
+            queryset = Permission.objects.filter(
+                property=property_obj,
+            )
+
+            # Exclude current permission when updating
+            if self.instance:
+                queryset = queryset.exclude(pk=self.instance.pk)
+
+            if queryset.exists():
+                existing_permission = queryset.first()
+
+                raise serializers.ValidationError(
+                    {
+                        "property": [
+                            f"This property is already assigned to "
+                            f"{existing_permission.user}."
+                        ]
+                    }
+                )
+
+        # -----------------------------------------
+        # Mortgage can only belong to ONE user
+        # -----------------------------------------
+        if mortgage_obj is not None:
+            queryset = Permission.objects.filter(
+                mortgage=mortgage_obj,
+            )
+
+            # Exclude current permission when updating
+            if self.instance:
+                queryset = queryset.exclude(pk=self.instance.pk)
+
+            if queryset.exists():
+                existing_permission = queryset.first()
+
+                raise serializers.ValidationError(
+                    {
+                        "mortgage": [
+                            f"This mortgage is already assigned to "
+                            f"{existing_permission.user}."
+                        ]
+                    }
+                )
+
         return attrs
 
     def to_representation(self, instance):
@@ -131,7 +180,12 @@ class PermissionSerializer(serializers.ModelSerializer):
 class BulkPropertyPermissionSerializer(serializers.ModelSerializer):
     property = serializers.ListField(
         child=serializers.UUIDField(),
-        allow_empty=False,
+        allow_empty=True,
+        write_only=True,
+    )
+    mortgage = serializers.ListField(
+        child=serializers.UUIDField(),
+        allow_empty=True,
         write_only=True,
     )
     can_view = serializers.BooleanField(default=False)
@@ -141,7 +195,7 @@ class BulkPropertyPermissionSerializer(serializers.ModelSerializer):
         model = Permission
         fields = [
             "property",
-            "property",
+            "mortgage",
             "can_view",
             "can_edit",
         ]
@@ -156,10 +210,25 @@ class BulkPropertyPermissionSerializer(serializers.ModelSerializer):
             },
         ).data
 
+        rep["mortgage"] = MortgageSlimSerializer(
+            instance.mortgage,
+            context={
+                **self.context,
+            },
+        ).data
+
         return rep
 
     def validate(self, attrs):
-        if attrs["can_edit"] and not attrs["can_view"]:
+        property_ids = attrs.get("property", [])
+        mortgage_ids = attrs.get("mortgage", [])
+
+        if not property_ids and not mortgage_ids:
+            raise serializers.ValidationError(
+                {"non_field_errors": ["This field is required."]}
+            )
+
+        if attrs.get("can_edit") and not attrs.get("can_view"):
             raise serializers.ValidationError(
                 {"can_edit": "can_view must be true when can_edit is true."}
             )

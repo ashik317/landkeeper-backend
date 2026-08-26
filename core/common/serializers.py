@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 
 from rest_framework import serializers
 
-from apps.property.models import Property, DocumentFile
+from apps.property.models import Property, Mortgage, DocumentFile
 from apps.tenant.models import Tenant
 
 from .models import Media
@@ -29,6 +29,12 @@ class PropertySlimSerializer(serializers.ModelSerializer):
     class Meta:
         model = Property
         fields = ["id", "alias", "property_name"]
+
+
+class MortgageSlimSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Mortgage
+        fields = ["id", "alias", "mortgage_name"]
 
 
 class MediaSlimSerializer(serializers.ModelSerializer):
