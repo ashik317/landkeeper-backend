@@ -7,6 +7,7 @@ import uuid
 from io import BytesIO
 import gocardless_pro
 import stripe
+from django_celery_beat import querysets
 from rest_framework.exceptions import NotFound
 from datetime import date, timedelta
 from django.conf import settings
@@ -1223,4 +1224,18 @@ class TenantListAPiView(ListAPIView):
         organisation = self.request.user.get_organisation()
         if not organisation:
             raise NotFound("Organisation not found for the user.")
-        return Tenant.objects.filter(organisation=organisation).order_by("-created_at")
+
+        queryset  = (
+            Tenant.objects
+            .filter(organisation=organisation)
+            .select_related("property")
+            .order_by("-created_at")
+        )
+
+        property_alias = self.request.query_params.get("property_alias")
+
+        if property_alias:
+            queryset  = queryset .filter(
+                property_alias=property_alias
+            )
+        return queryset
