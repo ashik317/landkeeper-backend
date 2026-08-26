@@ -1236,6 +1236,6 @@ class TenantListAPiView(ListAPIView):
 
         if property_alias:
             queryset  = queryset .filter(
-                property_alias=property_alias
+                property__alias=property_alias
             )
         return queryset
