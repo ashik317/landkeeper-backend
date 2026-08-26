@@ -12,6 +12,7 @@ from rest_framework.generics import (
     RetrieveUpdateDestroyAPIView,
     ListAPIView,
 )
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from openpyxl import Workbook
@@ -877,9 +878,19 @@ class ComplianceAndCertificationShareView(APIView):
             organisation=compliance.organisation,
         ).order_by("-created_at")
 
-        serializer = TenantSerializer(tenants, many=True)
+        # Apply pagination
+        paginator = PageNumberPagination()
+        paginator.page_size = 10
 
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        page = paginator.paginate_queryset(
+            tenants,
+            request,
+            view=self,
+        )
+
+        serializer = TenantSerializer(page, many=True)
+
+        return paginator.get_paginated_response(serializer.data)
 
     def post(self, request, *args, **kwargs):
         compliance = self.get_compliance()
