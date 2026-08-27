@@ -843,10 +843,8 @@ class ComplianceAndCertificationShareView(APIView):
 
     def get_compliance(self):
         organisation = self.request.user.get_organisation()
-
         if not organisation:
             raise NotFound("Organisation not found for the user.")
-
         return get_object_or_404(
             ComplianceAndCertification,
             alias=self.kwargs["compliance_alias"],
@@ -858,52 +856,38 @@ class ComplianceAndCertificationShareView(APIView):
             alias__in=tenant_aliases,
             organisation=compliance.organisation,
         )
-
         found_aliases = {
             str(alias) for alias in tenants.values_list("alias", flat=True)
         }
-
         missing = [alias for alias in tenant_aliases if str(alias) not in found_aliases]
-
         if missing:
             raise ValidationError(
                 {"tenant": f"Unknown tenant alias(es): {', '.join(missing)}"}
             )
-
         return tenants
 
     def get(self, request, *args, **kwargs):
         compliance = self.get_compliance()
+        tenants = Tenant.objects.filter(
+            compliance_shares__compliance=compliance,
+            organisation=compliance.organisation,
+        ).order_by("-created_at")
 
-        tenants = (
-            Tenant.objects.filter(
-                organisation=compliance.organisation,
-            )
-            .exclude(
-                compliance_shares__compliance=compliance,
-            )
-            .order_by("-created_at")
-        )
-
+        # Apply pagination
         paginator = PageNumberPagination()
         paginator.page_size = 10
-
         page = paginator.paginate_queryset(
             tenants,
             request,
             view=self,
         )
-
         serializer = TenantSerializer(page, many=True)
-
         return paginator.get_paginated_response(serializer.data)
 
     def post(self, request, *args, **kwargs):
         compliance = self.get_compliance()
-
         serializer = ComplianceShareSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
         tenant_aliases = serializer.validated_data["tenant"]
 
         tenants = self._resolve_tenants(
@@ -924,10 +908,8 @@ class ComplianceAndCertificationShareView(APIView):
 
     def delete(self, request, *args, **kwargs):
         compliance = self.get_compliance()
-
         serializer = ComplianceShareSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
         tenant_aliases = serializer.validated_data["tenant"]
 
         tenants = self._resolve_tenants(

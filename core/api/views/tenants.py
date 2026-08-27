@@ -1225,7 +1225,7 @@ class TenantListAPiView(ListAPIView):
         if not organisation:
             raise NotFound("Organisation not found for the user.")
 
-        queryset  = (
+        queryset = (
             Tenant.objects
             .filter(organisation=organisation)
             .select_related("property")
@@ -1233,9 +1233,14 @@ class TenantListAPiView(ListAPIView):
         )
 
         property_alias = self.request.query_params.get("property_alias")
-
         if property_alias:
-            queryset  = queryset .filter(
-                property__alias=property_alias
+            queryset = queryset.filter(property__alias=property_alias)
+
+        compliance_alias = self.request.query_params.get("compliance_alias")
+        if compliance_alias:
+            queryset = queryset.exclude(
+                compliance_shares__compliance__alias=compliance_alias,
+                compliance_shares__compliance__organisation=organisation,
             )
+
         return queryset
