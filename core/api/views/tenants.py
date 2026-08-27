@@ -1226,8 +1226,7 @@ class TenantListAPiView(ListAPIView):
             raise NotFound("Organisation not found for the user.")
 
         queryset = (
-            Tenant.objects
-            .filter(organisation=organisation)
+            Tenant.objects.filter(organisation=organisation)
             .select_related("property")
             .order_by("-created_at")
         )
