@@ -24,6 +24,8 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+from apps import tenant
 from apps.organisation.models import OrganisationUser
 from apps.organisation.enums import OrganisationRoleChoices
 from apps.property.models import (
@@ -873,12 +875,16 @@ class ComplianceAndCertificationShareView(APIView):
     def get(self, request, *args, **kwargs):
         compliance = self.get_compliance()
 
-        tenants = Tenant.objects.filter(
-            compliance_shares__compliance=compliance,
-            organisation=compliance.organisation,
-        ).order_by("-created_at")
+        tenants = (
+            Tenant.objects.filter(
+                organisation=compliance.organisation,
+            )
+            .exclude(
+                compliance_shares__compliance=compliance,
+            )
+            .order_by("-created_at")
+        )
 
-        # Apply pagination
         paginator = PageNumberPagination()
         paginator.page_size = 10
 
