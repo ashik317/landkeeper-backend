@@ -21,3 +21,11 @@ class SourceChoices(models.TextChoices):
     REFERRAL = "REFERRAL", _("Referral")
     WEBSITE = "WEBSITE", _("Website")
     OTHER = "OTHER", _("Other")
+
+
+class OrganisationSubscriptionStatus(models.TextChoices):
+    ACTIVE = "ACTIVE", "Active"
+    TRIALING = "TRIALING", "Trialing"
+    PAST_DUE = "PAST_DUE", "Past Due"
+    CANCELLED = "CANCELLED", "Cancelled"
+    EXPIRED = "EXPIRED", "Expired"

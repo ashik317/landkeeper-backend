@@ -34,7 +34,7 @@ class PropertySlimSerializer(serializers.ModelSerializer):
 class MortgageSlimSerializer(serializers.ModelSerializer):
     class Meta:
         model = Mortgage
-        fields = ["id", "alias", "mortgage_name"]
+        fields = ["id", "alias", "lender_name"]
 
 
 class MediaSlimSerializer(serializers.ModelSerializer):

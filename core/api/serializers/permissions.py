@@ -181,11 +181,13 @@ class BulkPropertyPermissionSerializer(serializers.ModelSerializer):
     property = serializers.ListField(
         child=serializers.UUIDField(),
         allow_empty=True,
+        required=False,
         write_only=True,
     )
     mortgage = serializers.ListField(
         child=serializers.UUIDField(),
         allow_empty=True,
+        required=False,
         write_only=True,
     )
     can_view = serializers.BooleanField(default=False)
@@ -194,6 +196,7 @@ class BulkPropertyPermissionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Permission
         fields = [
+            "alias",
             "property",
             "mortgage",
             "can_view",
@@ -234,3 +237,35 @@ class BulkPropertyPermissionSerializer(serializers.ModelSerializer):
             )
 
         return attrs
+
+
+class AvailablePropertySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Property
+        fields = [
+            "id",
+            "alias",
+            "property_name",
+            "property_owner",
+            "company_name",
+            "property_type",
+            "status",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class AvailableMortgageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Mortgage
+        fields = [
+            "alias",
+            "lender_name",
+            "interest_rate_type",
+            "interest_rate",
+            "interest_rate_expiry_date",
+            "outstanding_balance",
+            "monthly_payment",
+            "remaining_mortgage",
+            "property",
+        ]

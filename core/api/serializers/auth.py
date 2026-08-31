@@ -7,7 +7,6 @@ from rest_framework import serializers
 from apps.authentication.models import EmailVerification, InviteUser
 from apps.authentication.enums import NameTitleChoices
 from apps.organisation.models import Organisation, OrganisationUser
-from apps.subscription.models import UserSubscription, SubscriptionPlan
 from apps.property.models import Tenant
 from api.utils import send_verification_email
 
@@ -50,11 +49,10 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             user.is_active = False
             user.save()
 
-            # Assign FREE subscription
-            free_plan = SubscriptionPlan.objects.filter(name__iexact="free").first()
-            if not free_plan:
-                raise serializers.ValidationError("Free plan is not configured.")
-            UserSubscription.objects.create(user=user, plan=free_plan, is_active=True)
+            # # Assign FREE subscription
+            # free_plan = SubscriptionPlan.objects.filter(name__iexact="free").first()
+            # if not free_plan:
+            #     raise serializers.ValidationError("Free plan is not configured.")
 
             # Create default organisation
             organisation = Organisation.objects.create(

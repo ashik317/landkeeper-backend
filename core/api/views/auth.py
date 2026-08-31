@@ -680,6 +680,7 @@ class TenantAcceptInviteView(APIView):
 class OrganisationUserListAPIView(ListAPIView):
     serializer_class = OrganisationUserSerializer
     pagination_class = None
+    search_fields = ["user__email", "user__first_name", "user__last_name"]
 
     def get_queryset(self):
         organisation = self.request.user.get_organisation()

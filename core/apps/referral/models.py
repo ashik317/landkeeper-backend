@@ -161,11 +161,11 @@ class ReferralCommission(CreatedAtUpdatedAtBaseModel):
     referral = models.ForeignKey(
         Referral, on_delete=models.PROTECT, related_name="commissions"
     )
-    subscription = models.ForeignKey(
-        "subscription.UserSubscription",
-        on_delete=models.PROTECT,
-        related_name="referral_commissions",
-    )
+    # subscription = models.ForeignKey(
+    #     "subscription.UserSubscription",
+    #     on_delete=models.PROTECT,
+    #     related_name="referral_commissions",
+    # )
     billing_period_start = models.DateField()
     billing_period_end = models.DateField()
     commission_percentage = models.PositiveSmallIntegerField(
@@ -178,16 +178,16 @@ class ReferralCommission(CreatedAtUpdatedAtBaseModel):
         default=CommissionStatusChoices.PENDING,
     )
 
-    class Meta:
-        verbose_name = _("Referral Commission")
-        verbose_name_plural = _("Referral Commissions")
-        ordering = ["-created_at"]
-        constraints = [
-            models.UniqueConstraint(
-                fields=["subscription", "billing_period_start"],
-                name="unique_subscription_billing_period_commission",
-            )
-        ]
+    # class Meta:
+    #     verbose_name = _("Referral Commission")
+    #     verbose_name_plural = _("Referral Commissions")
+    #     ordering = ["-created_at"]
+    #     constraints = [
+    #         models.UniqueConstraint(
+    #             fields=["subscription", "billing_period_start"],
+    #             name="unique_subscription_billing_period_commission",
+    #         )
+    #     ]
 
     def __str__(self):
         return (

@@ -2,7 +2,11 @@ from django.contrib.auth import get_user_model
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-from apps.organisation.enums import OrganisationRoleChoices
+from apps.organisation.enums import (
+    OrganisationRoleChoices,
+    OrganisationSubscriptionStatus,
+)
+from apps.subscription.models import SubscriptionPlan
 from common.models import (
     NameSlugDescriptionBaseModel,
     TimestampThumbnailImageField,
@@ -63,3 +67,31 @@ class OrganisationUser(CreatedAtUpdatedAtBaseModel):
 
     def __str__(self):
         return f"{self.user.email} - {self.organisation.name} ({self.role})"
+
+
+class OrganisationSubscription(CreatedAtUpdatedAtBaseModel):
+    organisation = models.OneToOneField(
+        "organisation.Organisation",
+        on_delete=models.CASCADE,
+        related_name="subscription",
+    )
+    plan = models.ForeignKey(
+        SubscriptionPlan,
+        on_delete=models.PROTECT,
+        related_name="subscriptions",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=OrganisationSubscriptionStatus.choices,
+        default=OrganisationSubscriptionStatus.ACTIVE,
+    )
+    started_at = models.DateTimeField()
+    current_period_start = models.DateTimeField()
+    current_period_end = models.DateTimeField()
+    cancelled_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    def __str__(self):
+        return f"{self.organisation} - {self.plan}"

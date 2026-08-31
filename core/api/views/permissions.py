@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.db.models import Exists, OuterRef
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 
@@ -22,6 +23,8 @@ from apps.property.models import (
 from ..serializers.permissions import (
     PermissionSerializer,
     BulkPropertyPermissionSerializer,
+    AvailablePropertySerializer,
+    AvailableMortgageSerializer,
 )
 
 from common.permission import (
@@ -138,6 +141,14 @@ class BulkPropertyPermissionView(ListCreateAPIView):
     serializer_class = BulkPropertyPermissionSerializer
     permission_classes = [IsLandlord]
 
+    def get_serializer_class(self):
+        permission_status = self.request.query_params.get("permission_status")
+
+        if permission_status == "not_added":
+            return AvailablePropertySerializer
+
+        return BulkPropertyPermissionSerializer
+
     def get_queryset(self):
         organisation = self.request.user.get_organisation()
 
@@ -145,11 +156,36 @@ class BulkPropertyPermissionView(ListCreateAPIView):
             raise NotFound("Organisation not found for the user.")
 
         user_alias = self.kwargs.get("user_alias")
+
         user = get_object_or_404(
             User,
             alias=user_alias,
         )
 
+        permission_status = self.request.query_params.get("permission_status")
+
+        # ---------------------------------------------------------
+        # Return properties that DON'T have permission for this user
+        # ---------------------------------------------------------
+        if permission_status == "not_added":
+            existing_permissions = Permission.objects.filter(
+                organisation=organisation,
+                user=user,
+                property=OuterRef("pk"),
+            )
+
+            return (
+                Property.objects.filter(
+                    organisation=organisation,
+                )
+                .annotate(has_permission=Exists(existing_permissions))
+                .filter(has_permission=False)
+                .order_by("-created_at")
+            )
+
+        # ---------------------------------------------------------
+        # Default: return properties that already have permission
+        # ---------------------------------------------------------
         return Permission.objects.filter(
             organisation=organisation,
             user=user,
@@ -236,6 +272,14 @@ class BulkMortgagePermissionView(ListCreateAPIView):
     serializer_class = BulkPropertyPermissionSerializer
     permission_classes = [IsLandlord]
 
+    def get_serializer_class(self):
+        permission_status = self.request.query_params.get("permission_status")
+
+        if permission_status == "not_added":
+            return AvailableMortgageSerializer
+
+        return BulkPropertyPermissionSerializer
+
     def get_queryset(self):
         organisation = self.request.user.get_organisation()
 
@@ -243,11 +287,36 @@ class BulkMortgagePermissionView(ListCreateAPIView):
             raise NotFound("Organisation not found for the user.")
 
         user_alias = self.kwargs.get("user_alias")
+
         user = get_object_or_404(
             User,
             alias=user_alias,
         )
 
+        permission_status = self.request.query_params.get("permission_status")
+
+        # ---------------------------------------------
+        # Mortgages NOT assigned to this user
+        # ---------------------------------------------
+        if permission_status == "not_added":
+            existing_permissions = Permission.objects.filter(
+                organisation=organisation,
+                user=user,
+                mortgage=OuterRef("pk"),
+            )
+
+            return (
+                Mortgage.objects.filter(
+                    organisation=organisation,
+                )
+                .annotate(has_permission=Exists(existing_permissions))
+                .filter(has_permission=False)
+                .order_by("-created_at")
+            )
+
+        # ---------------------------------------------
+        # Mortgages already assigned to this user
+        # ---------------------------------------------
         return Permission.objects.filter(
             organisation=organisation,
             user=user,
