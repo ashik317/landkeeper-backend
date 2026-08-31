@@ -170,7 +170,6 @@ class BulkPropertyPermissionView(ListCreateAPIView):
         if permission_status == "not_added":
             existing_permissions = Permission.objects.filter(
                 organisation=organisation,
-                user=user,
                 property=OuterRef("pk"),
             )
 
@@ -301,7 +300,6 @@ class BulkMortgagePermissionView(ListCreateAPIView):
         if permission_status == "not_added":
             existing_permissions = Permission.objects.filter(
                 organisation=organisation,
-                user=user,
                 mortgage=OuterRef("pk"),
             )
 
