@@ -11,4 +11,5 @@ urlpatterns = [
     path("/templates", include("api.urls.documents")),
     path("/permissions", include("api.urls.permissions")),
     path("/ambassador", include("api.urls.ambassador")),
+    path("/subscription", include("api.urls.subscription")),
 ]

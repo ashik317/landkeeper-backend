@@ -5,6 +5,7 @@ from apps.property.models import Property, Mortgage
 
 from common.serializers import (
     UserSlimSerializer,
+    MediaSlimSerializer,
     PropertySlimSerializer,
     MortgageSlimSerializer,
 )
@@ -240,16 +241,20 @@ class BulkPropertyPermissionSerializer(serializers.ModelSerializer):
 
 
 class AvailablePropertySerializer(serializers.ModelSerializer):
+    documents = MediaSlimSerializer(many=True, read_only=True)
+
     class Meta:
         model = Property
         fields = [
             "id",
             "alias",
             "property_name",
+            "address",
             "property_owner",
             "company_name",
             "property_type",
             "status",
+            "documents",
             "created_at",
             "updated_at",
         ]

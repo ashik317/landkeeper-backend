@@ -37,7 +37,6 @@ class SubscriptionPlan(CreatedAtUpdatedAtBaseModel):
     monthly_price = models.DecimalField(
         max_digits=10,
         decimal_places=2,
-        default=0.00,
         null=True,
     )
     max_properties = models.PositiveIntegerField()
@@ -58,8 +57,8 @@ class SubscriptionPlan(CreatedAtUpdatedAtBaseModel):
         blank=True,
     )
 
-    # class Meta:
-    #     ordering = ["monthly_price"]
+    class Meta:
+        ordering = ["monthly_price"]
 
     def __str__(self):
         return self.name

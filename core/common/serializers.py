@@ -25,12 +25,6 @@ class UserSlimSerializer(serializers.ModelSerializer):
         return None
 
 
-class PropertySlimSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Property
-        fields = ["id", "alias", "property_name"]
-
-
 class MortgageSlimSerializer(serializers.ModelSerializer):
     class Meta:
         model = Mortgage
@@ -45,6 +39,14 @@ class MediaSlimSerializer(serializers.ModelSerializer):
             "image",
             "description",
         ]
+
+
+class PropertySlimSerializer(serializers.ModelSerializer):
+    documents = MediaSlimSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Property
+        fields = ["id", "alias", "property_name", "address", "status", "property_type", "documents"]
 
 
 class DocumentFileSlimSerializer(serializers.ModelSerializer):

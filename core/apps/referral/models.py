@@ -178,18 +178,12 @@ class ReferralCommission(CreatedAtUpdatedAtBaseModel):
         default=CommissionStatusChoices.PENDING,
     )
 
-    # class Meta:
-    #     verbose_name = _("Referral Commission")
-    #     verbose_name_plural = _("Referral Commissions")
-    #     ordering = ["-created_at"]
-    #     constraints = [
-    #         models.UniqueConstraint(
-    #             fields=["subscription", "billing_period_start"],
-    #             name="unique_subscription_billing_period_commission",
-    #         )
-    #     ]
-
     def __str__(self):
         return (
             f"{self.referral} - {self.commission_amount} ({self.get_status_display()})"
         )
+
+    class Meta:
+        verbose_name = _("Referral Commission")
+        verbose_name_plural = _("Referral Commissions")
+        ordering = ["-created_at"]
