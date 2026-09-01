@@ -2,6 +2,8 @@ from rest_framework.generics import ListAPIView
 
 from apps.subscription.models import SubscriptionPlan
 
+from common.permission import IsLandlord
+
 from api.serializers.subscription import SubscriptionPlanSerializer
 
 
@@ -19,7 +21,7 @@ class SubscriptionPlanListView(ListAPIView):
 
 class SelectSubscriptionView(CreateAPIView):
     serializer_class = SelectSubscriptionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsLandlord]
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -31,21 +33,17 @@ class SelectSubscriptionView(CreateAPIView):
 
         if not organisation:
             return Response(
-                {
-                    "detail": "Organisation not found."
-                },
+                {"detail": "Organisation not found."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
         with transaction.atomic():
-            subscription, created = (
-                OrganisationSubscription.objects.update_or_create(
-                    organisation=organisation,
-                    defaults={
-                        "plan": plan,
-                        "status": OrganisationSubscription.Status.PENDING,
-                    },
-                )
+            subscription, created = OrganisationSubscription.objects.update_or_create(
+                organisation=organisation,
+                defaults={
+                    "plan": plan,
+                    "status": OrganisationSubscription.Status.PENDING,
+                },
             )
 
         return Response(
