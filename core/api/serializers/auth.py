@@ -171,6 +171,8 @@ class UserSerializer(serializers.ModelSerializer):
 class UserProfileSerializer(serializers.ModelSerializer):
     role = serializers.SerializerMethodField()
     is_password_available = serializers.SerializerMethodField()
+    has_subscription = serializers.SerializerMethodField()
+    subscription_status = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -188,6 +190,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "profile_image",
             "is_active",
             "is_password_available",
+            "has_subscription",
+            "subscription_status",
             "created_at",
             "updated_at",
         ]
@@ -206,6 +210,24 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def get_is_password_available(self, obj):
         return obj.has_usable_password()
+
+    def get_subscription_status(self, obj):
+        organisation = obj.get_organisation()
+
+        if not organisation:
+            return None
+
+        subscription = getattr(organisation, "subscription", None)
+
+        return subscription.status if subscription else None
+
+    def get_has_subscription(self, obj):
+        organisation = obj.get_organisation()
+
+        if not organisation:
+            return False
+
+        return hasattr(organisation, "subscription")
 
 
 class TenantProfileSerializer(serializers.ModelSerializer):
