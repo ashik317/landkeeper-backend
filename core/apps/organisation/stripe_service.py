@@ -12,6 +12,20 @@ from apps.subscription.models import PaymentCard, PaymentTransaction, Subscripti
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
+
+# STRIPE OBJECT SAFE ACCESSOR
+def _stripe_get(obj, key, default=None):
+    """
+    Safe accessor for Stripe SDK objects — this installed SDK version's
+    StripeObject does not implement .get(), only __getitem__ and attribute
+    access. Use this everywhere instead of obj.get("key").
+    """
+    try:
+        return obj[key]
+    except (KeyError, TypeError):
+        return default
+
+
 # STRIPE CUSTOMER
 def get_or_create_stripe_customer(organisation, user):
     with transaction.atomic():
@@ -50,6 +64,7 @@ def get_or_create_stripe_product(plan):
     plan.stripe_product_id = product.id
     plan.save(update_fields=["stripe_product_id"])
     return product.id
+
 
 # STRIPE PRICE
 def get_or_create_stripe_price(plan):
@@ -448,6 +463,7 @@ def handle_payment_success(payment_intent):
         ]
     )
 
+
 # PAYMENT FAILED
 def handle_payment_failed(payment_intent):
     customer_id = payment_intent.customer
@@ -550,10 +566,8 @@ def change_subscription_plan(
         organisation_subscription.stripe_subscription_id
     )
 
-    items = stripe_subscription.get("items", {}).get(
-        "data",
-        []
-    )
+    items_data = _stripe_get(stripe_subscription, "items") or {}
+    items = _stripe_get(items_data, "data", [])
 
     if not items:
         raise ValueError(
@@ -603,6 +617,7 @@ def get_stripe_subscription(
     return stripe.Subscription.retrieve(
         stripe_subscription_id
     )
+
 
 # LIST PAYMENT METHODS
 def list_stripe_payment_methods(
@@ -739,8 +754,8 @@ def set_default_payment_method(
 
 # INVOICE PAYMENT SUCCEEDED (handles both first payment AND renewals)
 def handle_invoice_payment_succeeded(invoice):
-    customer_id = invoice.get("customer")
-    subscription_id = invoice.get("subscription")
+    customer_id = _stripe_get(invoice, "customer")
+    subscription_id = _stripe_get(invoice, "subscription")
 
     if not customer_id or not subscription_id:
         return
@@ -769,7 +784,7 @@ def handle_invoice_payment_succeeded(invoice):
             payment_intent_id = payment.payment_intent
             break
 
-    amount_paid = Decimal(invoice.get("amount_paid", 0)) / Decimal("100")
+    amount_paid = Decimal(_stripe_get(invoice, "amount_paid", 0)) / Decimal("100")
 
     with transaction.atomic():
         # get_or_create so first payment (already created in
@@ -781,19 +796,19 @@ def handle_invoice_payment_succeeded(invoice):
             defaults={
                 "subscription": local_subscription,
                 "amount": amount_paid,
-                "currency": invoice.get("currency", "gbp").upper(),
+                "currency": _stripe_get(invoice, "currency", "gbp").upper(),
                 "status": PaymentTransactionStatus.SUCCEEDED,
                 "attempt_number": 1,
-                "stripe_invoice_id": invoice.get("id"),
-                "invoice_pdf_url": invoice.get("invoice_pdf"),
+                "stripe_invoice_id": _stripe_get(invoice, "id"),
+                "invoice_pdf_url": _stripe_get(invoice, "invoice_pdf"),
             },
         )
 
         if not created:
             payment_transaction.status = PaymentTransactionStatus.SUCCEEDED
             payment_transaction.amount = amount_paid
-            payment_transaction.stripe_invoice_id = invoice.get("id")
-            payment_transaction.invoice_pdf_url = invoice.get("invoice_pdf")
+            payment_transaction.stripe_invoice_id = _stripe_get(invoice, "id")
+            payment_transaction.invoice_pdf_url = _stripe_get(invoice, "invoice_pdf")
             payment_transaction.save(
                 update_fields=[
                     "status",
@@ -829,10 +844,11 @@ def handle_invoice_payment_succeeded(invoice):
         ]
     )
 
+
 # INVOICE PAYMENT FAILED
 def handle_invoice_payment_failed(invoice):
-    customer_id = invoice.get("customer")
-    subscription_id = invoice.get("subscription")
+    customer_id = _stripe_get(invoice, "customer")
+    subscription_id = _stripe_get(invoice, "subscription")
 
     if not customer_id or not subscription_id:
         return
@@ -866,7 +882,7 @@ def handle_invoice_payment_failed(invoice):
 
 # SUBSCRIPTION CANCELLED
 def handle_subscription_deleted(stripe_subscription):
-    subscription_id = stripe_subscription.get("id")
+    subscription_id = _stripe_get(stripe_subscription, "id")
 
     try:
         local_subscription = OrganisationSubscription.objects.get(
@@ -882,7 +898,7 @@ def handle_subscription_deleted(stripe_subscription):
 
 # SUBSCRIPTION UPDATED
 def handle_subscription_updated(stripe_subscription):
-    subscription_id = stripe_subscription.get("id")
+    subscription_id = _stripe_get(stripe_subscription, "id")
 
     try:
         local_subscription = OrganisationSubscription.objects.get(
@@ -891,16 +907,17 @@ def handle_subscription_updated(stripe_subscription):
     except OrganisationSubscription.DoesNotExist:
         return
 
-    items = stripe_subscription.get("items", {}).get("data", [])
+    items_data = _stripe_get(stripe_subscription, "items") or {}
+    items = _stripe_get(items_data, "data", [])
 
     update_fields = ["auto_renew"]
 
-    local_subscription.auto_renew = not stripe_subscription.get(
-        "cancel_at_period_end", False
+    local_subscription.auto_renew = not _stripe_get(
+        stripe_subscription, "cancel_at_period_end", False
     )
 
     if items:
-        current_period_end = items[0].get("current_period_end")
+        current_period_end = _stripe_get(items[0], "current_period_end")
 
         if current_period_end:
             period_end = datetime.fromtimestamp(
@@ -917,7 +934,8 @@ def handle_subscription_updated(stripe_subscription):
             ])
 
     if items:
-        stripe_price_id = items[0].get("price", {}).get("id")
+        price = _stripe_get(items[0], "price") or {}
+        stripe_price_id = _stripe_get(price, "id")
 
         if (
             stripe_price_id
@@ -934,7 +952,7 @@ def handle_subscription_updated(stripe_subscription):
             except SubscriptionPlan.DoesNotExist:
                 pass
 
-    stripe_status = stripe_subscription.get("status")
+    stripe_status = _stripe_get(stripe_subscription, "status")
 
     status_map = {
         "active": OrganisationSubscriptionStatus.ACTIVE,

@@ -7,7 +7,11 @@ import stripe
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.conf import settings
-from rest_framework.generics import ListAPIView, DestroyAPIView, RetrieveUpdateAPIView
+from rest_framework.generics import (
+    ListAPIView,
+    RetrieveUpdateAPIView,
+    RetrieveUpdateDestroyAPIView,
+)
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
@@ -266,27 +270,107 @@ class LandlordPaymentCardListAPIView(APIView):
         )
 
 
-class LandlordPaymentCardDeleteAPIView(DestroyAPIView):
+class LandlordPaymentCardUpdateDeleteAPIView(RetrieveUpdateDestroyAPIView):
     permission_classes = [IsLandlord]
+    serializer_class = PaymentCardSerializer
+    http_method_names = ["get", "patch", "delete"]
     lookup_field = "alias"
     lookup_url_kwarg = "alias"
 
     def get_queryset(self):
         organisation = self.request.user.get_organisation()
-
         return PaymentCard.objects.filter(organisation=organisation)
+
+    def update(self, request, *args, **kwargs):
+        organisation = self.request.user.get_organisation()
+        instance = self.get_object()
+
+        # Defaults to True for backward compatibility with existing no-body PATCH calls
+        make_default = request.data.get("is_default", True)
+
+        if make_default:
+            return self._set_default(organisation, instance)
+        else:
+            return self._unset_default(organisation, instance)
+
+    def _set_default(self, organisation, instance):
+        if instance.is_default:
+            return Response(
+                {"detail": "This card is already the default."},
+                status=status.HTTP_200_OK,
+            )
+
+        try:
+            stripe.Customer.modify(
+                organisation.stripe_customer_id,
+                invoice_settings={
+                    "default_payment_method": instance.stripe_payment_method_id
+                },
+            )
+        except stripe.error.StripeError as exc:
+            return Response(
+                {"detail": f"Payment provider error: {exc.user_message or str(exc)}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        with transaction.atomic():
+            PaymentCard.objects.filter(
+                organisation=organisation, is_default=True
+            ).exclude(pk=instance.pk).update(is_default=False)
+
+            instance.is_default = True
+            instance.save(update_fields=["is_default"])
+
+        serializer = self.get_serializer(instance)
+        return Response(
+            {
+                "detail": "Default payment method updated.",
+                "card": serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def _unset_default(self, organisation, instance):
+        if not instance.is_default:
+            return Response(
+                {"detail": "This card is not currently the default."},
+                status=status.HTTP_200_OK,
+            )
+
+        with transaction.atomic():
+            instance.is_default = False
+            instance.save(update_fields=["is_default"])
+
+        try:
+            stripe.Customer.modify(
+                organisation.stripe_customer_id,
+                invoice_settings={"default_payment_method": ""},
+            )
+        except stripe.error.StripeError:
+            pass
+
+        serializer = self.get_serializer(instance)
+        return Response(
+            {
+                "detail": "Default payment method removed. No card is currently set as default.",
+                "card": serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     def perform_destroy(self, instance):
         organisation = self.request.user.get_organisation()
-
         was_default = instance.is_default
 
         stripe.PaymentMethod.detach(instance.stripe_payment_method_id)
-
         instance.delete()
 
         if was_default:
-            new_default = PaymentCard.objects.filter(organisation=organisation).first()
+            new_default = (
+                PaymentCard.objects.filter(organisation=organisation)
+                .order_by("-created_at")
+                .first()
+            )
 
             if new_default:
                 new_default.is_default = True
@@ -298,7 +382,6 @@ class LandlordPaymentCardDeleteAPIView(DestroyAPIView):
                         "default_payment_method": (new_default.stripe_payment_method_id)
                     },
                 )
-
 
 class LandlordBillingHistoryAPIView(ListAPIView):
     serializer_class = BillingHistorySerializer
