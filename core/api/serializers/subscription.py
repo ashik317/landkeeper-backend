@@ -1,7 +1,12 @@
 from rest_framework import serializers
 
 from apps.organisation.models import OrganisationSubscription
-from apps.subscription.models import SubscriptionFeature, SubscriptionPlan, PaymentCard, PaymentTransaction
+from apps.subscription.models import (
+    SubscriptionFeature,
+    SubscriptionPlan,
+    PaymentCard,
+    PaymentTransaction,
+)
 
 
 class SubscriptionFeatureSerializer(serializers.ModelSerializer):
@@ -19,12 +24,13 @@ class SubscriptionPlanSerializer(serializers.ModelSerializer):
         many=True,
         read_only=True,
     )
+    current_plan = serializers.SerializerMethodField()
 
     class Meta:
         model = SubscriptionPlan
         fields = [
             "alias",
-             "name",
+            "name",
             "plan_type",
             "monthly_price",
             "max_properties",
@@ -32,7 +38,20 @@ class SubscriptionPlanSerializer(serializers.ModelSerializer):
             "description",
             "features",
             "is_active",
+            "current_plan",
         ]
+
+    def get_current_plan(self, obj):
+        request = self.context.get("request")
+        if request and hasattr(request, "user"):
+            user = request.user
+            organisation = user.get_organisation()
+            if organisation and hasattr(organisation, "subscription"):
+                subscription = organisation.subscription
+                return subscription.plan == obj
+
+        return False
+
 
 class PaymentCardSerializer(serializers.ModelSerializer):
     class Meta:
