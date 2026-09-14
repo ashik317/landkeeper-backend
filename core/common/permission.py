@@ -1,6 +1,6 @@
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 from apps.authentication.models import Permission, User
-from apps.organisation.enums import OrganisationRoleChoices
+from apps.organisation.enums import OrganisationRoleChoices, OrganisationSubscriptionStatus
 from apps.organisation.models import OrganisationUser
 from apps.property.models import Tenant
 
@@ -157,3 +157,17 @@ class CanAccessMortgage(BasePermission):
             return False
 
         return False
+
+
+class HasActiveSubscription(BasePermission):
+    message = "Your subscription payment failed. Please update your payment method to continue."
+
+    def has_permission(self, request, view):
+        organisation = request.user.get_organisation()
+        subscription = getattr(organisation, "subscription", None)
+        if not subscription:
+            return False
+        return subscription.status in (
+            OrganisationSubscriptionStatus.ACTIVE,
+            OrganisationSubscriptionStatus.TRIALING,
+        )

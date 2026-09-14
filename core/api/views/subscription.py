@@ -1,6 +1,7 @@
 import uuid
 from django.db import transaction
 from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
 from django.views import View
 from django.utils import timezone
 import stripe
@@ -71,17 +72,25 @@ class SelectSubscriptionView(APIView):
 
         if current_subscription:
 
-            # RULE: ACTIVE subscription
-            if current_subscription.status == OrganisationSubscriptionStatus.ACTIVE:
+            if current_subscription.status in (
+                OrganisationSubscriptionStatus.ACTIVE,
+                OrganisationSubscriptionStatus.TRIALING,
+            ):
 
                 now = timezone.now()
-                billing_period_over = (
-                    current_subscription.next_billing_date is not None
-                    and now >= current_subscription.next_billing_date
-                )
 
-                # Case A: billing period NOT over yet → block switching entirely
-                if not billing_period_over:
+                if current_subscription.status == OrganisationSubscriptionStatus.TRIALING:
+                    period_over = (
+                        current_subscription.trial_end_date is not None
+                        and now >= current_subscription.trial_end_date
+                    )
+                else:
+                    period_over = (
+                        current_subscription.next_billing_date is not None
+                        and now >= current_subscription.next_billing_date
+                    )
+
+                if not period_over:
 
                     if current_subscription.plan_id == plan.id:
                         return Response(
@@ -92,26 +101,19 @@ class SelectSubscriptionView(APIView):
                     return Response(
                         {
                             "detail": (
-                                f"You already have an active subscription to "
+                                f"You already have a subscription to "
                                 f"'{current_subscription.plan.name}'. "
                                 f"Please wait until it ends, or use the plan-change "
                                 f"flow to switch plans."
                             ),
                             "current_plan": current_subscription.plan.name,
+                            "current_status": current_subscription.status,
                             "next_billing_date": current_subscription.next_billing_date,
+                            "trial_end_date": current_subscription.trial_end_date,
                         },
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
-                # Case B: billing period IS over → treat as expired, allow switching
-                # but still enforce the downgrade/property-count check below.
-                # (fall through to the downgrade check)
-
-            # RULE: Downgrade check (applies when switching to a plan
-            # with fewer max_properties than currently used) — applies
-            # whether the current subscription is ACTIVE-but-expired
-            # or already PENDING/CANCELLED and the org still has
-            # properties from a previous plan.
             if current_subscription.plan_id != plan.id:
                 current_property_count = organisation.organisation_properties.count()
 
@@ -134,21 +136,8 @@ class SelectSubscriptionView(APIView):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
-            # RULE: PENDING subscription → free to switch to ANY plan
-            # (payment not completed yet, nothing "locked in")
             if current_subscription.status == OrganisationSubscriptionStatus.PENDING:
 
-                if (
-                    current_subscription.plan_id != plan.id
-                    and current_subscription.stripe_subscription_id
-                ):
-                    try:
-                        stripe.Subscription.cancel(
-                            current_subscription.stripe_subscription_id
-                        )
-                    except stripe.error.InvalidRequestError:
-                        pass
-
                 result = create_subscription_with_client_secret(
                     organisation=organisation,
                     user=request.user,
@@ -158,13 +147,15 @@ class SelectSubscriptionView(APIView):
                     {
                         "subscription_id": result["subscription_id"],
                         "client_secret": result["client_secret"],
+                        "mode": result["mode"],
                     },
                     status=status.HTTP_200_OK,
                 )
 
-            # RULE: ACTIVE but expired (billing period over) → allow new
-            # subscription to be created for the selected plan.
-            if current_subscription.status == OrganisationSubscriptionStatus.ACTIVE:
+            if current_subscription.status in (
+                OrganisationSubscriptionStatus.ACTIVE,
+                OrganisationSubscriptionStatus.TRIALING,
+            ):
                 result = create_subscription_with_client_secret(
                     organisation=organisation,
                     user=request.user,
@@ -174,11 +165,11 @@ class SelectSubscriptionView(APIView):
                     {
                         "subscription_id": result["subscription_id"],
                         "client_secret": result["client_secret"],
+                        "mode": result["mode"],
                     },
                     status=status.HTTP_200_OK,
                 )
 
-        # No existing subscription at all → normal flow
         result = create_subscription_with_client_secret(
             organisation=organisation,
             user=request.user,
@@ -189,6 +180,7 @@ class SelectSubscriptionView(APIView):
             {
                 "subscription_id": result["subscription_id"],
                 "client_secret": result["client_secret"],
+                "mode": result["mode"],
             },
             status=status.HTTP_200_OK,
         )
@@ -285,7 +277,6 @@ class LandlordPaymentCardUpdateDeleteAPIView(RetrieveUpdateDestroyAPIView):
         organisation = self.request.user.get_organisation()
         instance = self.get_object()
 
-        # Defaults to True for backward compatibility with existing no-body PATCH calls
         make_default = request.data.get("is_default", True)
 
         if make_default:
@@ -383,6 +374,7 @@ class LandlordPaymentCardUpdateDeleteAPIView(RetrieveUpdateDestroyAPIView):
                     },
                 )
 
+
 class LandlordBillingHistoryAPIView(ListAPIView):
     serializer_class = BillingHistorySerializer
     permission_classes = [IsLandlord]
@@ -409,9 +401,8 @@ class LandlordSubscriptionAPIView(RetrieveUpdateAPIView):
     def get_object(self):
         organisation = self.request.user.get_organisation()
 
-        return OrganisationSubscription.objects.select_related(
-            "plan",
-        ).get(
+        return get_object_or_404(
+            OrganisationSubscription.objects.select_related("plan"),
             organisation=organisation,
         )
 
@@ -426,137 +417,3 @@ class LandlordSubscriptionAPIView(RetrieveUpdateAPIView):
 
             subscription.auto_renew = auto_renew
             subscription.save(update_fields=["auto_renew"])
-
-
-
-class LandlordSubscriptionValidationAPIView(APIView):
-    permission_classes = [IsLandlord]
-
-    def post(self, request):
-        organisation = request.user.get_organisation()
-        plan_alias = request.data.get("plan")
-
-        if not plan_alias:
-            return Response(
-                {
-                    "allowed": False,
-                    "error": "plan is required",
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        try:
-            new_plan = SubscriptionPlan.objects.get(
-                alias=plan_alias,
-                is_active=True,
-            )
-        except SubscriptionPlan.DoesNotExist:
-            return Response(
-                {
-                    "allowed": False,
-                    "error": "Invalid subscription plan",
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        current_subscription = (
-            OrganisationSubscription.objects.select_related("plan")
-            .filter(
-                organisation=organisation,
-                status=OrganisationSubscriptionStatus.ACTIVE,
-            )
-            .first()
-        )
-
-        if not current_subscription:
-            return Response(
-                {
-                    "allowed": True,
-                    "message": ("No active subscription. " "Plan selection allowed."),
-                    "plan": {
-                        "alias": str(new_plan.alias),
-                        "name": new_plan.name,
-                        "price": str(new_plan.monthly_price),
-                        "max_properties": new_plan.max_properties,
-                    },
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        current_plan = current_subscription.plan
-
-        if current_plan.id == new_plan.id:
-            return Response(
-                {
-                    "allowed": False,
-                    "message": ("You are already subscribed " "to this plan."),
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        now = timezone.now()
-
-        if (
-            current_subscription.next_billing_date
-            and now < current_subscription.next_billing_date
-        ):
-            return Response(
-                {
-                    "allowed": False,
-                    "message": (
-                        "You cannot change your subscription "
-                        "plan before the current billing "
-                        "period ends."
-                    ),
-                    "current_plan": current_plan.name,
-                    "current_period_end": (current_subscription.next_billing_date),
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        current_property_count = organisation.organisation_properties.count()
-
-        current_price = current_plan.monthly_price or 0
-        new_price = new_plan.monthly_price or 0
-
-        if new_price < current_price:
-            if new_plan.max_properties < current_property_count:
-                excess = current_property_count - new_plan.max_properties
-
-                return Response(
-                    {
-                        "allowed": False,
-                        "message": (f"Cannot switch to " f"'{new_plan.name}'."),
-                        "errors": [
-                            (
-                                f"{current_property_count} properties "
-                                f"active — new plan allows "
-                                f"{new_plan.max_properties}. "
-                                f"Please remove {excess} "
-                                f"properties first."
-                            )
-                        ],
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-        return Response(
-            {
-                "allowed": True,
-                "message": "Plan change allowed.",
-                "current_plan": {
-                    "alias": str(current_plan.alias),
-                    "name": current_plan.name,
-                    "price": str(current_plan.monthly_price),
-                    "max_properties": current_plan.max_properties,
-                },
-                "new_plan": {
-                    "alias": str(new_plan.alias),
-                    "name": new_plan.name,
-                    "price": str(new_plan.monthly_price),
-                    "max_properties": new_plan.max_properties,
-                },
-                "current_property_count": current_property_count,
-            },
-            status=status.HTTP_200_OK,
-        )

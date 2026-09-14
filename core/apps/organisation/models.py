@@ -40,6 +40,7 @@ class Organisation(NameSlugDescriptionBaseModel):
     stripe_charges_enabled = models.BooleanField(default=False)
     stripe_payouts_enabled = models.BooleanField(default=False)
     stripe_details_submitted = models.BooleanField(default=False)
+    has_used_trial = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["-created_at", "-updated_at"]
@@ -114,6 +115,7 @@ class OrganisationSubscription(CreatedAtUpdatedAtBaseModel):
     start_date = models.DateTimeField(null=True, blank=True)
     end_date = models.DateTimeField(null=True, blank=True)
     next_billing_date = models.DateTimeField(null=True, blank=True)
+    trial_end_date = models.DateTimeField(null=True, blank=True)
 
     # Auto-renewal
     auto_renew = models.BooleanField(default=True)

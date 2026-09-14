@@ -10,6 +10,7 @@ class PlanType(models.TextChoices):
 class PaymentTransactionStatus(models.TextChoices):
     PENDING = "PENDING", "Pending"
     SUCCEEDED = "SUCCEEDED", "Succeeded"
+    TRIALING = "TRIALING", "Trialing"
     FAILED = "FAILED", "Failed"
     PARTIALLY_REFUNDED = "PARTIALLY_REFUNDED", "Partially Refunded"
     REFUNDED = "REFUNDED", "Refunded"

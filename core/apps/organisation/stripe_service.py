@@ -1,4 +1,5 @@
 import stripe
+from django.core.mail import send_mail
 from django.conf import settings
 from django.db import transaction
 from decimal import Decimal
@@ -15,11 +16,6 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 
 # STRIPE OBJECT SAFE ACCESSOR
 def _stripe_get(obj, key, default=None):
-    """
-    Safe accessor for Stripe SDK objects — this installed SDK version's
-    StripeObject does not implement .get(), only __getitem__ and attribute
-    access. Use this everywhere instead of obj.get("key").
-    """
     try:
         return obj[key]
     except (KeyError, TypeError):
@@ -183,6 +179,52 @@ def sync_payment_method_to_organisation(
     return payment_card
 
 
+# SYNC CARD FROM PAYMENT METHOD (FIX #1 — was called but never defined)
+def _sync_card_from_payment_method(organisation, payment_method):
+    if not payment_method:
+        return
+
+    payment_method_id = (
+        payment_method
+        if isinstance(payment_method, str)
+        else _stripe_get(payment_method, "id")
+    )
+
+    if not payment_method_id:
+        return
+
+    payment_method = stripe.PaymentMethod.retrieve(payment_method_id)
+    card = payment_method.card
+
+    if not card:
+        return
+
+    with transaction.atomic():
+
+        # Remove old default card (but not this one, in case it's
+        # already the default — avoids briefly having zero defaults)
+        PaymentCard.objects.filter(
+            organisation=organisation,
+            is_default=True,
+        ).exclude(
+            stripe_payment_method_id=payment_method.id
+        ).update(
+            is_default=False
+        )
+
+        PaymentCard.objects.update_or_create(
+            stripe_payment_method_id=payment_method.id,
+            defaults={
+                "organisation": organisation,
+                "last_four": card.last4,
+                "card_brand": card.brand,
+                "expiry_month": card.exp_month,
+                "expiry_year": card.exp_year,
+                "is_default": True,
+            },
+        )
+
+
 # CREATE SUBSCRIPTION DIRECTLY
 def create_subscription_with_client_secret(
     organisation,
@@ -191,21 +233,29 @@ def create_subscription_with_client_secret(
     payment_method_id=None,
     idempotency_key=None,
 ):
-    # reuse existing pending subscription for the SAME plan
-    existing = OrganisationSubscription.objects.filter(
-        organisation=organisation,
-        plan=plan,
-        status=OrganisationSubscriptionStatus.PENDING,
-    ).first()
+    current = getattr(organisation, "subscription", None)
+
+    # reuse existing pending/trialing subscription for the SAME plan
+    existing = (
+        current
+        if (
+            current
+            and current.plan_id == plan.id
+            and current.status in [
+                OrganisationSubscriptionStatus.PENDING,
+                OrganisationSubscriptionStatus.TRIALING,
+            ]
+        )
+        else None
+    )
 
     if existing and existing.stripe_subscription_id:
         try:
             stripe_subscription = stripe.Subscription.retrieve(
                 existing.stripe_subscription_id,
-                expand=["latest_invoice.confirmation_secret"],
+                expand=["latest_invoice.confirmation_secret", "pending_setup_intent"],
             )
 
-            # Only reuse if payment hasn't been completed yet
             if stripe_subscription.status == "incomplete":
                 confirmation_secret = (
                     stripe_subscription.latest_invoice.confirmation_secret
@@ -214,11 +264,25 @@ def create_subscription_with_client_secret(
                     return {
                         "subscription_id": stripe_subscription.id,
                         "client_secret": confirmation_secret.client_secret,
+                        "mode": "payment",
+                    }
+
+            elif stripe_subscription.status == "trialing":
+                setup_intent = stripe_subscription.pending_setup_intent
+                if setup_intent and setup_intent.status == "requires_payment_method":
+                    return {
+                        "subscription_id": stripe_subscription.id,
+                        "client_secret": setup_intent.client_secret,
+                        "mode": "setup",
                     }
 
         except stripe.error.InvalidRequestError:
-            # Stripe subscription no longer exists
-            # fall through and create a fresh one below
+            pass
+
+    if current and current.stripe_subscription_id:
+        try:
+            stripe.Subscription.cancel(current.stripe_subscription_id)
+        except stripe.error.InvalidRequestError:
             pass
 
     customer_id = get_or_create_stripe_customer(
@@ -234,6 +298,9 @@ def create_subscription_with_client_secret(
             payment_method_id=payment_method_id,
             set_default=True,
         )
+
+    # Only ever true the very first time this organisation subscribes
+    give_trial = not organisation.has_used_trial
 
     subscription_params = {
         "customer": customer_id,
@@ -253,8 +320,15 @@ def create_subscription_with_client_secret(
         },
         "expand": [
             "latest_invoice.confirmation_secret",
+            "pending_setup_intent",
         ],
     }
+
+    if give_trial:
+        subscription_params["trial_period_days"] = 7
+        subscription_params["trial_settings"] = {
+            "end_behavior": {"missing_payment_method": "cancel"},
+        }
 
     if payment_method_id:
         subscription_params["default_payment_method"] = payment_method_id
@@ -269,18 +343,40 @@ def create_subscription_with_client_secret(
             **subscription_params,
         )
 
+    local_status = (
+        OrganisationSubscriptionStatus.TRIALING
+        if give_trial
+        else OrganisationSubscriptionStatus.PENDING
+    )
+
     # LOCAL SUBSCRIPTION
     local_subscription, _ = (
         OrganisationSubscription.objects.update_or_create(
             organisation=organisation,
             defaults={
                 "plan": plan,
-                "status": OrganisationSubscriptionStatus.PENDING,
+                "status": local_status,
                 "stripe_subscription_id": stripe_subscription.id,
                 "auto_renew": True,
+                "trial_end_date": (
+                    datetime.fromtimestamp(
+                        stripe_subscription.trial_end, tz=timezone.utc
+                    )
+                    if give_trial and stripe_subscription.trial_end
+                    else None
+                ),
             },
         )
     )
+
+    if give_trial:
+        setup_intent = stripe_subscription.pending_setup_intent
+
+        return {
+            "subscription_id": stripe_subscription.id,
+            "client_secret": setup_intent.client_secret,
+            "mode": "setup",
+        }
 
     # GET PAYMENT INTENT ID
     invoice = stripe.Invoice.retrieve(
@@ -323,6 +419,7 @@ def create_subscription_with_client_secret(
             .confirmation_secret
             .client_secret
         ),
+        "mode": "payment",
     }
 
 
@@ -755,7 +852,12 @@ def set_default_payment_method(
 # INVOICE PAYMENT SUCCEEDED (handles both first payment AND renewals)
 def handle_invoice_payment_succeeded(invoice):
     customer_id = _stripe_get(invoice, "customer")
+
     subscription_id = _stripe_get(invoice, "subscription")
+    if not subscription_id:
+        parent = _stripe_get(invoice, "parent") or {}
+        subscription_details = _stripe_get(parent, "subscription_details") or {}
+        subscription_id = _stripe_get(subscription_details, "subscription")
 
     if not customer_id or not subscription_id:
         return
@@ -786,13 +888,33 @@ def handle_invoice_payment_succeeded(invoice):
 
     amount_paid = Decimal(_stripe_get(invoice, "amount_paid", 0)) / Decimal("100")
 
+    is_trial_conversion = (not organisation.has_used_trial) and amount_paid > 0
+
+    if amount_paid <= 0:
+        PaymentTransaction.objects.get_or_create(
+            organisation=organisation,
+            stripe_invoice_id=_stripe_get(invoice, "id"),
+            defaults={
+                "subscription": local_subscription,
+                "amount": amount_paid,
+                "currency": _stripe_get(invoice, "currency", "gbp").upper(),
+                "status": PaymentTransactionStatus.SUCCEEDED,
+                "attempt_number": 1,
+                "invoice_pdf_url": _stripe_get(invoice, "invoice_pdf"),
+            },
+        )
+        return
+
+    lookup = (
+        {"stripe_payment_intent_id": payment_intent_id}
+        if payment_intent_id
+        else {"stripe_invoice_id": _stripe_get(invoice, "id")}
+    )
+
     with transaction.atomic():
-        # get_or_create so first payment (already created in
-        # create_subscription_with_client_secret) is not duplicated,
-        # but every future renewal creates a fresh row
         payment_transaction, created = PaymentTransaction.objects.get_or_create(
             organisation=organisation,
-            stripe_payment_intent_id=payment_intent_id,
+            **lookup,
             defaults={
                 "subscription": local_subscription,
                 "amount": amount_paid,
@@ -801,6 +923,7 @@ def handle_invoice_payment_succeeded(invoice):
                 "attempt_number": 1,
                 "stripe_invoice_id": _stripe_get(invoice, "id"),
                 "invoice_pdf_url": _stripe_get(invoice, "invoice_pdf"),
+                "stripe_payment_intent_id": payment_intent_id,
             },
         )
 
@@ -818,20 +941,33 @@ def handle_invoice_payment_succeeded(invoice):
                 ]
             )
 
-    # Sync subscription status/dates from Stripe (covers renewals too)
     stripe_subscription = stripe.Subscription.retrieve(subscription_id)
-    subscription_item = stripe_subscription.items.data[0]
+
+    _sync_card_from_payment_method(
+        organisation, stripe_subscription.default_payment_method
+    )
+
+    invoice_line = invoice["lines"]["data"][0] if invoice["lines"]["data"] else None
+    period_end_ts = (
+        _stripe_get(invoice_line, "period", {}).get("end")
+        if invoice_line
+        else None
+    )
+
+    if period_end_ts is None:
+        subscription_item = stripe_subscription.items.data[0]
+        period_end_ts = subscription_item.current_period_end
 
     local_subscription.status = OrganisationSubscriptionStatus.ACTIVE
     local_subscription.start_date = local_subscription.start_date or datetime.fromtimestamp(
         stripe_subscription.start_date, tz=timezone.utc,
     )
     local_subscription.end_date = datetime.fromtimestamp(
-        subscription_item.current_period_end,
+        period_end_ts,
         tz=timezone.utc,
     )
     local_subscription.next_billing_date = datetime.fromtimestamp(
-        subscription_item.current_period_end, tz=timezone.utc,
+        period_end_ts, tz=timezone.utc,
     )
     local_subscription.auto_renew = not stripe_subscription.cancel_at_period_end
     local_subscription.save(
@@ -844,11 +980,26 @@ def handle_invoice_payment_succeeded(invoice):
         ]
     )
 
+    if is_trial_conversion:
+        organisation.has_used_trial = True
+        organisation.save(update_fields=["has_used_trial"])
+
+        send_trial_converted_email(
+            organisation=organisation,
+            amount=amount_paid,
+            plan=local_subscription.plan,
+        )
+
 
 # INVOICE PAYMENT FAILED
 def handle_invoice_payment_failed(invoice):
     customer_id = _stripe_get(invoice, "customer")
+
     subscription_id = _stripe_get(invoice, "subscription")
+    if not subscription_id:
+        parent = _stripe_get(invoice, "parent") or {}
+        subscription_details = _stripe_get(parent, "subscription_details") or {}
+        subscription_id = _stripe_get(subscription_details, "subscription")
 
     if not customer_id or not subscription_id:
         return
@@ -861,6 +1012,11 @@ def handle_invoice_payment_failed(invoice):
         )
     except (Organisation.DoesNotExist, OrganisationSubscription.DoesNotExist):
         return
+
+    # Capture BEFORE overwriting status below
+    was_trialing = (
+        local_subscription.status == OrganisationSubscriptionStatus.TRIALING
+    )
 
     invoice_payments = stripe.InvoicePayment.list(invoice=invoice["id"])
     payment_intent_id = None
@@ -878,6 +1034,11 @@ def handle_invoice_payment_failed(invoice):
 
     local_subscription.status = OrganisationSubscriptionStatus.PAST_DUE
     local_subscription.save(update_fields=["status"])
+
+    if was_trialing:
+        send_trial_payment_failed_email(organisation)
+    else:
+        send_renewal_payment_failed_email(organisation)
 
 
 # SUBSCRIPTION CANCELLED
@@ -915,6 +1076,18 @@ def handle_subscription_updated(stripe_subscription):
     local_subscription.auto_renew = not _stripe_get(
         stripe_subscription, "cancel_at_period_end", False
     )
+
+    # Backfill start_date if it's missing (e.g. this event arrived
+    # before invoice.payment_succeeded ever set it)
+    if not local_subscription.start_date:
+        stripe_start = _stripe_get(stripe_subscription, "start_date")
+
+        if stripe_start:
+            local_subscription.start_date = datetime.fromtimestamp(
+                stripe_start,
+                tz=timezone.utc,
+            )
+            update_fields.append("start_date")
 
     if items:
         current_period_end = _stripe_get(items[0], "current_period_end")
@@ -955,6 +1128,7 @@ def handle_subscription_updated(stripe_subscription):
     stripe_status = _stripe_get(stripe_subscription, "status")
 
     status_map = {
+        "trialing": OrganisationSubscriptionStatus.TRIALING,
         "active": OrganisationSubscriptionStatus.ACTIVE,
         "past_due": OrganisationSubscriptionStatus.PAST_DUE,
         "canceled": OrganisationSubscriptionStatus.CANCELLED,
@@ -967,4 +1141,68 @@ def handle_subscription_updated(stripe_subscription):
 
     local_subscription.save(
         update_fields=list(set(update_fields))
+    )
+
+# EMAIL NOTIFICATIONS
+def _resolve_billing_email(organisation):
+    organisation_user = (
+        organisation.organisation_users
+        .select_related("user")
+        .order_by("created_at")
+        .first()
+    )
+
+    return organisation_user.user.email if organisation_user else None
+
+
+def send_trial_converted_email(organisation, amount, plan):
+    billing_email = _resolve_billing_email(organisation)
+
+    if not billing_email:
+        return
+
+    send_mail(
+        subject="Your free trial has ended — payment received",
+        message=(
+            f"We've charged your card £{amount} for the {plan.name} plan. "
+            f"Thanks for staying with us!"
+        ),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[billing_email],
+    )
+
+
+def send_trial_payment_failed_email(organisation):
+    billing_email = _resolve_billing_email(organisation)
+
+    if not billing_email:
+        return
+
+    send_mail(
+        subject="We couldn't charge your card after your free trial",
+        message=(
+            "Your 7-day free trial has ended and we were unable to charge "
+            "your card. Please add a valid payment method to keep access "
+            "to the platform."
+        ),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[billing_email],
+    )
+
+
+def send_renewal_payment_failed_email(organisation):
+    billing_email = _resolve_billing_email(organisation)
+
+    if not billing_email:
+        return
+
+    send_mail(
+        subject="Your subscription payment failed",
+        message=(
+            "We were unable to charge your card for this month's "
+            "subscription renewal. Please update your payment method to "
+            "avoid losing access to the platform."
+        ),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[billing_email],
     )
