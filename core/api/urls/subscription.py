@@ -8,7 +8,6 @@ from api.views.subscription import (
     LandlordPaymentCardUpdateDeleteAPIView,
     LandlordBillingHistoryAPIView,
     LandlordSubscriptionAPIView,
-    LandlordSubscriptionValidationAPIView,
 )
 
 urlpatterns = [
@@ -46,10 +45,5 @@ urlpatterns = [
         "",
         LandlordSubscriptionAPIView.as_view(),
         name="landlord-subscription",
-    ),
-    path(
-        "/validation",
-        LandlordSubscriptionValidationAPIView.as_view(),
-        name="landlord-subscription-validation",
     ),
 ]
