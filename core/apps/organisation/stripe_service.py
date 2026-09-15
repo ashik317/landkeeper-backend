@@ -14,12 +14,39 @@ from apps.subscription.models import PaymentCard, PaymentTransaction, Subscripti
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
+class PlanDowngradeBlockedError(Exception):
+    def __init__(self, current_property_count, max_properties, excess):
+        self.current_property_count = current_property_count
+        self.max_properties = max_properties
+        self.excess = excess
+        super().__init__("Too many properties for this plan.")
+
+
 # STRIPE OBJECT SAFE ACCESSOR
 def _stripe_get(obj, key, default=None):
     try:
         return obj[key]
     except (KeyError, TypeError):
         return default
+
+
+def _sync_account_credit(organisation, customer_id=None):
+    customer_id = customer_id or organisation.stripe_customer_id
+
+    if not customer_id:
+        return organisation.account_credit
+
+    customer = stripe.Customer.retrieve(customer_id)
+
+    # Stripe: negative balance = credit owed TO the customer
+    credit_pence = -customer.balance if customer.balance < 0 else 0
+    credit = Decimal(credit_pence) / Decimal("100")
+
+    if credit != organisation.account_credit:
+        organisation.account_credit = credit
+        organisation.save(update_fields=["account_credit"])
+
+    return organisation.account_credit
 
 
 # STRIPE CUSTOMER
@@ -179,7 +206,7 @@ def sync_payment_method_to_organisation(
     return payment_card
 
 
-# SYNC CARD FROM PAYMENT METHOD (FIX #1 — was called but never defined)
+# SYNC CARD FROM PAYMENT METHOD
 def _sync_card_from_payment_method(organisation, payment_method):
     if not payment_method:
         return
@@ -201,8 +228,6 @@ def _sync_card_from_payment_method(organisation, payment_method):
 
     with transaction.atomic():
 
-        # Remove old default card (but not this one, in case it's
-        # already the default — avoids briefly having zero defaults)
         PaymentCard.objects.filter(
             organisation=organisation,
             is_default=True,
@@ -407,6 +432,7 @@ def create_subscription_with_client_secret(
                 "currency": "GBP",
                 "status": PaymentTransactionStatus.PENDING,
                 "attempt_number": 1,
+                "plan_name_snapshot": plan.name,
             },
         )
 
@@ -635,63 +661,94 @@ def update_payment_transaction_from_intent(payment_intent):
 
 
 # SUBSCRIPTION PLAN CHANGE
-def change_subscription_plan(
-    organisation,
-    new_plan,
-    proration_behavior="create_prorations",
-):
+def change_subscription_plan(organisation, new_plan):
+    organisation_subscription = getattr(organisation, "subscription", None)
 
-    organisation_subscription = getattr(
-        organisation,
-        "subscription",
-        None,
-    )
+    if not organisation_subscription or not organisation_subscription.stripe_subscription_id:
+        raise ValueError("Organisation has no active Stripe subscription.")
 
-    if not organisation_subscription:
-        raise ValueError(
-            "Organisation has no subscription."
-        )
+    old_plan = organisation_subscription.plan
+    is_upgrade = new_plan.monthly_price > old_plan.monthly_price
 
-    if not organisation_subscription.stripe_subscription_id:
-        raise ValueError(
-            "Organisation has no Stripe subscription."
-        )
+    if not is_upgrade:
+        current_count = organisation.organisation_properties.count()
+        if new_plan.max_properties < current_count:
+            raise PlanDowngradeBlockedError(
+                current_property_count=current_count,
+                max_properties=new_plan.max_properties,
+                excess=current_count - new_plan.max_properties,
+            )
 
     price_id = get_or_create_stripe_price(new_plan)
 
     stripe_subscription = stripe.Subscription.retrieve(
         organisation_subscription.stripe_subscription_id
     )
-
-    items_data = _stripe_get(stripe_subscription, "items") or {}
-    items = _stripe_get(items_data, "data", [])
-
-    if not items:
-        raise ValueError(
-            "Stripe subscription has no subscription items."
-        )
-
-    subscription_item_id = items[0]["id"]
+    subscription_item_id = stripe_subscription["items"]["data"][0]["id"]
 
     updated_subscription = stripe.Subscription.modify(
         organisation_subscription.stripe_subscription_id,
-
-        items=[
-            {
-                "id": subscription_item_id,
-                "price": price_id,
-            }
-        ],
-
-        proration_behavior=proration_behavior,
-
-        metadata={
-            "organisation_id": str(organisation.id),
-            "plan_id": str(new_plan.id),
-        },
+        items=[{"id": subscription_item_id, "price": price_id}],
+        proration_behavior="create_prorations",
+        billing_cycle_anchor="now",   # resets renewal date to today
+        metadata={"organisation_id": str(organisation.id), "plan_id": str(new_plan.id)},
     )
 
-    return updated_subscription
+    organisation_subscription.plan = new_plan
+    update_fields = ["plan"]
+
+    items = updated_subscription["items"]["data"]
+    if items:
+        current_period_start = _stripe_get(items[0], "current_period_start")
+        current_period_end = _stripe_get(items[0], "current_period_end")
+
+        if current_period_start:
+            organisation_subscription.start_date = datetime.fromtimestamp(
+                current_period_start, tz=timezone.utc
+            )
+            update_fields.append("start_date")
+
+        if current_period_end:
+            period_end = datetime.fromtimestamp(current_period_end, tz=timezone.utc)
+            organisation_subscription.end_date = period_end
+            organisation_subscription.next_billing_date = period_end
+            update_fields += ["end_date", "next_billing_date"]
+
+    organisation_subscription.save(update_fields=update_fields)
+
+    invoice = stripe.Invoice.create(
+        customer=stripe_subscription.customer,
+        subscription=organisation_subscription.stripe_subscription_id,
+        auto_advance=False,
+    )
+    invoice = stripe.Invoice.finalize_invoice(invoice.id)
+
+    requires_action = False
+    payment_client_secret = None
+
+    invoice_payments = stripe.InvoicePayment.list(invoice=invoice.id)
+    payment_intent_id = None
+    for ip in invoice_payments.data:
+        payment = ip.payment
+        if payment and payment.type == "payment_intent":
+            payment_intent_id = payment.payment_intent
+            break
+
+    if payment_intent_id:
+        payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+        if payment_intent.status == "requires_action":
+            requires_action = True
+            payment_client_secret = payment_intent.client_secret
+
+    account_credit = _sync_account_credit(organisation, stripe_subscription.customer)
+
+    return {
+        "is_upgrade": is_upgrade,
+        "invoice": invoice,
+        "account_credit": account_credit,
+        "requires_action": requires_action,
+        "client_secret": payment_client_secret,
+    }
 
 
 # CANCEL SUBSCRIPTION
@@ -849,7 +906,7 @@ def set_default_payment_method(
     return payment_card
 
 
-# INVOICE PAYMENT SUCCEEDED (handles both first payment AND renewals)
+# INVOICE PAYMENT SUCCEEDED
 def handle_invoice_payment_succeeded(invoice):
     customer_id = _stripe_get(invoice, "customer")
 
@@ -901,8 +958,16 @@ def handle_invoice_payment_succeeded(invoice):
                 "status": PaymentTransactionStatus.SUCCEEDED,
                 "attempt_number": 1,
                 "invoice_pdf_url": _stripe_get(invoice, "invoice_pdf"),
+                "plan_name_snapshot": local_subscription.plan.name,
             },
         )
+
+        stripe_subscription = stripe.Subscription.retrieve(subscription_id)
+        _sync_card_from_payment_method(
+            organisation, stripe_subscription.default_payment_method
+        )
+
+        _sync_account_credit(organisation, customer_id)
         return
 
     lookup = (
@@ -924,6 +989,7 @@ def handle_invoice_payment_succeeded(invoice):
                 "stripe_invoice_id": _stripe_get(invoice, "id"),
                 "invoice_pdf_url": _stripe_get(invoice, "invoice_pdf"),
                 "stripe_payment_intent_id": payment_intent_id,
+                "plan_name_snapshot": local_subscription.plan.name,
             },
         )
 
@@ -979,6 +1045,8 @@ def handle_invoice_payment_succeeded(invoice):
             "auto_renew",
         ]
     )
+
+    _sync_account_credit(organisation, customer_id)
 
     if is_trial_conversion:
         organisation.has_used_trial = True
