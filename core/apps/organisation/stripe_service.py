@@ -228,8 +228,6 @@ def _sync_card_from_payment_method(organisation, payment_method):
 
     with transaction.atomic():
 
-        # Remove old default card (but not this one, in case it's
-        # already the default — avoids briefly having zero defaults)
         PaymentCard.objects.filter(
             organisation=organisation,
             is_default=True,
@@ -688,6 +686,7 @@ def change_subscription_plan(organisation, new_plan):
     )
     subscription_item_id = stripe_subscription["items"]["data"][0]["id"]
 
+    # trial run its full remaining course untouched.
     is_trialing = stripe_subscription.status == "trialing"
 
     modify_kwargs = {
@@ -707,6 +706,8 @@ def change_subscription_plan(organisation, new_plan):
     organisation_subscription.plan = new_plan
     update_fields = ["plan"]
 
+    # Only sync period dates when NOT trialing — during trial the
+    # existing trial_end_date/next_billing_date stay untouched.
     if not is_trialing:
         items = updated_subscription["items"]["data"]
         if items:
@@ -732,7 +733,7 @@ def change_subscription_plan(organisation, new_plan):
     payment_client_secret = None
 
     # Only actually bill something if NOT trialing — during an active
-    # trial there's nothing to charge yet, the trial continues untouched.
+    # trial there's nothing to charge yet.
     if not is_trialing:
         invoice = stripe.Invoice.create(
             customer=stripe_subscription.customer,
@@ -921,7 +922,7 @@ def set_default_payment_method(
     return payment_card
 
 
-# INVOICE PAYMENT SUCCEEDED (handles both first payment AND renewals)
+# INVOICE PAYMENT SUCCEEDED
 def handle_invoice_payment_succeeded(invoice):
     customer_id = _stripe_get(invoice, "customer")
 
@@ -958,6 +959,12 @@ def handle_invoice_payment_succeeded(invoice):
             payment_intent_id = payment.payment_intent
             break
 
+    # with an explicit payment_method.
+    actual_payment_method = None
+    if payment_intent_id:
+        payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+        actual_payment_method = payment_intent.payment_method
+
     amount_paid = Decimal(_stripe_get(invoice, "amount_paid", 0)) / Decimal("100")
 
     is_trial_conversion = (not organisation.has_used_trial) and amount_paid > 0
@@ -978,8 +985,11 @@ def handle_invoice_payment_succeeded(invoice):
         )
 
         stripe_subscription = stripe.Subscription.retrieve(subscription_id)
+
+        # with nothing to charge won't have a payment_intent at all).
         _sync_card_from_payment_method(
-            organisation, stripe_subscription.default_payment_method
+            organisation,
+            actual_payment_method or stripe_subscription.default_payment_method,
         )
 
         _sync_account_credit(organisation, customer_id)
@@ -1024,9 +1034,29 @@ def handle_invoice_payment_succeeded(invoice):
 
     stripe_subscription = stripe.Subscription.retrieve(subscription_id)
 
+    # subscription default.
     _sync_card_from_payment_method(
-        organisation, stripe_subscription.default_payment_method
+        organisation,
+        actual_payment_method or stripe_subscription.default_payment_method,
     )
+
+
+    # most recently used.
+    if actual_payment_method:
+        actual_pm_id = (
+            actual_payment_method
+            if isinstance(actual_payment_method, str)
+            else actual_payment_method.id
+        )
+        if actual_pm_id != stripe_subscription.default_payment_method:
+            stripe.Subscription.modify(
+                subscription_id,
+                default_payment_method=actual_pm_id,
+            )
+            stripe.Customer.modify(
+                customer_id,
+                invoice_settings={"default_payment_method": actual_pm_id},
+            )
 
     invoice_line = invoice["lines"]["data"][0] if invoice["lines"]["data"] else None
     period_end_ts = (
