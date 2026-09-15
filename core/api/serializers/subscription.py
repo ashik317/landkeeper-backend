@@ -1,4 +1,6 @@
 from rest_framework import serializers
+from django.utils import timezone
+import math
 
 from apps.organisation.models import OrganisationSubscription
 from apps.subscription.models import (
@@ -92,6 +94,7 @@ class BillingHistorySerializer(serializers.ModelSerializer):
 
 class OrganisationSubscriptionStatusSerializer(serializers.ModelSerializer):
     plan = SubscriptionPlanSerializer(read_only=True)
+    trial_days_left = serializers.SerializerMethodField()
 
     class Meta:
         model = OrganisationSubscription
@@ -104,6 +107,7 @@ class OrganisationSubscriptionStatusSerializer(serializers.ModelSerializer):
             "next_billing_date",
             "auto_renew",
             "cancelled_at",
+            "trial_days_left",
         ]
         read_only_fields = [
             "status",
@@ -112,7 +116,16 @@ class OrganisationSubscriptionStatusSerializer(serializers.ModelSerializer):
             "end_date",
             "next_billing_date",
             "cancelled_at",
+            "trial_days_left",
         ]
+
+    def get_trial_days_left(self, obj):
+        if obj.status != OrganisationSubscription.Status.TRIALING or not obj.trial_end_date:
+            return None
+        remaining = obj.trial_end_date - timezone.now()
+        if remaining.total_seconds() <= 0:
+            return 0
+        return math.ceil(remaining.total_seconds() / 86400)
 
 
 class SelectSubscriptionSerializer(serializers.Serializer):
