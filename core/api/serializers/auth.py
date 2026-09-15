@@ -56,8 +56,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
             # Create default organisation
             organisation = Organisation.objects.create(
-                name=f"{user.first_name}'s Organisation",
-                primary_mobile=user.phone or "",
+                name=f"{user.first_name}'s Organisation"
             )
 
             # Add user as OWNER in organisation
@@ -173,6 +172,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     is_password_available = serializers.SerializerMethodField()
     has_subscription = serializers.SerializerMethodField()
     subscription_status = serializers.SerializerMethodField()
+    plan = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -192,6 +192,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "is_password_available",
             "has_subscription",
             "subscription_status",
+            "plan",
             "created_at",
             "updated_at",
         ]
@@ -228,6 +229,16 @@ class UserProfileSerializer(serializers.ModelSerializer):
             return False
 
         return hasattr(organisation, "subscription")
+
+    def get_plan(self, obj):
+        organisation = obj.get_organisation()
+
+        if not organisation:
+            return None
+
+        subscription = getattr(organisation, "subscription", None)
+
+        return subscription.plan.plan_type if subscription else None
 
 
 class TenantProfileSerializer(serializers.ModelSerializer):
