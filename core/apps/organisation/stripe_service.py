@@ -686,59 +686,75 @@ def change_subscription_plan(organisation, new_plan):
     )
     subscription_item_id = stripe_subscription["items"]["data"][0]["id"]
 
+    # trial run its full remaining course untouched.
+    is_trialing = stripe_subscription.status == "trialing"
+
+    modify_kwargs = {
+        "items": [{"id": subscription_item_id, "price": price_id}],
+        "proration_behavior": "create_prorations",
+        "metadata": {"organisation_id": str(organisation.id), "plan_id": str(new_plan.id)},
+    }
+
+    if not is_trialing:
+        modify_kwargs["billing_cycle_anchor"] = "now"
+
     updated_subscription = stripe.Subscription.modify(
         organisation_subscription.stripe_subscription_id,
-        items=[{"id": subscription_item_id, "price": price_id}],
-        proration_behavior="create_prorations",
-        billing_cycle_anchor="now",   # resets renewal date to today
-        metadata={"organisation_id": str(organisation.id), "plan_id": str(new_plan.id)},
+        **modify_kwargs,
     )
 
     organisation_subscription.plan = new_plan
     update_fields = ["plan"]
 
-    items = updated_subscription["items"]["data"]
-    if items:
-        current_period_start = _stripe_get(items[0], "current_period_start")
-        current_period_end = _stripe_get(items[0], "current_period_end")
+    # Only sync period dates when NOT trialing — during trial the
+    # existing trial_end_date/next_billing_date stay untouched.
+    if not is_trialing:
+        items = updated_subscription["items"]["data"]
+        if items:
+            current_period_start = _stripe_get(items[0], "current_period_start")
+            current_period_end = _stripe_get(items[0], "current_period_end")
 
-        if current_period_start:
-            organisation_subscription.start_date = datetime.fromtimestamp(
-                current_period_start, tz=timezone.utc
-            )
-            update_fields.append("start_date")
+            if current_period_start:
+                organisation_subscription.start_date = datetime.fromtimestamp(
+                    current_period_start, tz=timezone.utc
+                )
+                update_fields.append("start_date")
 
-        if current_period_end:
-            period_end = datetime.fromtimestamp(current_period_end, tz=timezone.utc)
-            organisation_subscription.end_date = period_end
-            organisation_subscription.next_billing_date = period_end
-            update_fields += ["end_date", "next_billing_date"]
+            if current_period_end:
+                period_end = datetime.fromtimestamp(current_period_end, tz=timezone.utc)
+                organisation_subscription.end_date = period_end
+                organisation_subscription.next_billing_date = period_end
+                update_fields += ["end_date", "next_billing_date"]
 
     organisation_subscription.save(update_fields=update_fields)
 
-    invoice = stripe.Invoice.create(
-        customer=stripe_subscription.customer,
-        subscription=organisation_subscription.stripe_subscription_id,
-        auto_advance=False,
-    )
-    invoice = stripe.Invoice.finalize_invoice(invoice.id)
-
+    invoice = None
     requires_action = False
     payment_client_secret = None
 
-    invoice_payments = stripe.InvoicePayment.list(invoice=invoice.id)
-    payment_intent_id = None
-    for ip in invoice_payments.data:
-        payment = ip.payment
-        if payment and payment.type == "payment_intent":
-            payment_intent_id = payment.payment_intent
-            break
+    # Only actually bill something if NOT trialing — during an active
+    # trial there's nothing to charge yet.
+    if not is_trialing:
+        invoice = stripe.Invoice.create(
+            customer=stripe_subscription.customer,
+            subscription=organisation_subscription.stripe_subscription_id,
+            auto_advance=False,
+        )
+        invoice = stripe.Invoice.finalize_invoice(invoice.id)
 
-    if payment_intent_id:
-        payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
-        if payment_intent.status == "requires_action":
-            requires_action = True
-            payment_client_secret = payment_intent.client_secret
+        invoice_payments = stripe.InvoicePayment.list(invoice=invoice.id)
+        payment_intent_id = None
+        for ip in invoice_payments.data:
+            payment = ip.payment
+            if payment and payment.type == "payment_intent":
+                payment_intent_id = payment.payment_intent
+                break
+
+        if payment_intent_id:
+            payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+            if payment_intent.status == "requires_action":
+                requires_action = True
+                payment_client_secret = payment_intent.client_secret
 
     account_credit = _sync_account_credit(organisation, stripe_subscription.customer)
 
@@ -943,6 +959,12 @@ def handle_invoice_payment_succeeded(invoice):
             payment_intent_id = payment.payment_intent
             break
 
+    # with an explicit payment_method.
+    actual_payment_method = None
+    if payment_intent_id:
+        payment_intent = stripe.PaymentIntent.retrieve(payment_intent_id)
+        actual_payment_method = payment_intent.payment_method
+
     amount_paid = Decimal(_stripe_get(invoice, "amount_paid", 0)) / Decimal("100")
 
     is_trial_conversion = (not organisation.has_used_trial) and amount_paid > 0
@@ -963,8 +985,11 @@ def handle_invoice_payment_succeeded(invoice):
         )
 
         stripe_subscription = stripe.Subscription.retrieve(subscription_id)
+
+        # with nothing to charge won't have a payment_intent at all).
         _sync_card_from_payment_method(
-            organisation, stripe_subscription.default_payment_method
+            organisation,
+            actual_payment_method or stripe_subscription.default_payment_method,
         )
 
         _sync_account_credit(organisation, customer_id)
@@ -1009,9 +1034,29 @@ def handle_invoice_payment_succeeded(invoice):
 
     stripe_subscription = stripe.Subscription.retrieve(subscription_id)
 
+    # subscription default.
     _sync_card_from_payment_method(
-        organisation, stripe_subscription.default_payment_method
+        organisation,
+        actual_payment_method or stripe_subscription.default_payment_method,
     )
+
+
+    # most recently used.
+    if actual_payment_method:
+        actual_pm_id = (
+            actual_payment_method
+            if isinstance(actual_payment_method, str)
+            else actual_payment_method.id
+        )
+        if actual_pm_id != stripe_subscription.default_payment_method:
+            stripe.Subscription.modify(
+                subscription_id,
+                default_payment_method=actual_pm_id,
+            )
+            stripe.Customer.modify(
+                customer_id,
+                invoice_settings={"default_payment_method": actual_pm_id},
+            )
 
     invoice_line = invoice["lines"]["data"][0] if invoice["lines"]["data"] else None
     period_end_ts = (
@@ -1025,9 +1070,12 @@ def handle_invoice_payment_succeeded(invoice):
         period_end_ts = subscription_item.current_period_end
 
     local_subscription.status = OrganisationSubscriptionStatus.ACTIVE
-    local_subscription.start_date = local_subscription.start_date or datetime.fromtimestamp(
-        stripe_subscription.start_date, tz=timezone.utc,
+
+    subscription_item = stripe_subscription.items.data[0]
+    local_subscription.start_date = datetime.fromtimestamp(
+        subscription_item.current_period_start, tz=timezone.utc,
     )
+
     local_subscription.end_date = datetime.fromtimestamp(
         period_end_ts,
         tz=timezone.utc,
