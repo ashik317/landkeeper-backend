@@ -113,9 +113,6 @@ class SelectSubscriptionView(APIView):
                             status=status.HTTP_400_BAD_REQUEST,
                         )
 
-                    # CHANGED: added requires_action and client_secret so the
-                    # frontend knows whether it must run 3D Secure before the
-                    # upgrade charge is actually complete.
                     return Response(
                         {
                             "detail": (
