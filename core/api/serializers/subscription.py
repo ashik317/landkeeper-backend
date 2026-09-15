@@ -72,10 +72,7 @@ class PaymentCardSerializer(serializers.ModelSerializer):
 
 
 class BillingHistorySerializer(serializers.ModelSerializer):
-    plan_name = serializers.CharField(
-        source="subscription.plan.name",
-        read_only=True,
-    )
+    plan_name = serializers.SerializerMethodField()
 
     class Meta:
         model = PaymentTransaction
@@ -90,6 +87,9 @@ class BillingHistorySerializer(serializers.ModelSerializer):
             "invoice_pdf_url",
         ]
         read_only_fields = fields
+
+    def get_plan_name(self, obj):
+        return obj.plan_name_snapshot or obj.subscription.plan.name
 
 
 class OrganisationSubscriptionStatusSerializer(serializers.ModelSerializer):

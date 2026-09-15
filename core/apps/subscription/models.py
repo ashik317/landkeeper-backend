@@ -139,6 +139,7 @@ class PaymentTransaction(CreatedAtUpdatedAtBaseModel):
         default=PaymentTransactionStatus.PENDING,
     )
     attempt_number = models.PositiveSmallIntegerField(default=0)
+    plan_name_snapshot = models.CharField(max_length=50, blank=True, null=True)
 
     class Meta:
         ordering = ["-created_at"]

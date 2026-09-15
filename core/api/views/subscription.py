@@ -32,6 +32,8 @@ from apps.organisation.stripe_service import (
     handle_subscription_deleted,
     handle_subscription_updated,
     create_subscription_with_client_secret,
+    change_subscription_plan,
+    PlanDowngradeBlockedError,
 )
 from apps.subscription.models import SubscriptionPlan, PaymentCard, PaymentTransaction
 from apps.organisation.models import OrganisationSubscription
@@ -50,10 +52,7 @@ class SelectSubscriptionView(APIView):
             )
 
         try:
-            plan = SubscriptionPlan.objects.get(
-                alias=plan_id,
-                is_active=True,
-            )
+            plan = SubscriptionPlan.objects.get(alias=plan_id, is_active=True)
         except SubscriptionPlan.DoesNotExist:
             return Response(
                 {"detail": "Subscription plan not found."},
@@ -63,9 +62,7 @@ class SelectSubscriptionView(APIView):
         organisation = request.user.get_organisation()
 
         current_subscription = (
-            OrganisationSubscription.objects.filter(
-                organisation=organisation,
-            )
+            OrganisationSubscription.objects.filter(organisation=organisation)
             .select_related("plan")
             .first()
         )
@@ -76,7 +73,6 @@ class SelectSubscriptionView(APIView):
                 OrganisationSubscriptionStatus.ACTIVE,
                 OrganisationSubscriptionStatus.TRIALING,
             ):
-
                 now = timezone.now()
 
                 if current_subscription.status == OrganisationSubscriptionStatus.TRIALING:
@@ -98,20 +94,41 @@ class SelectSubscriptionView(APIView):
                             status=status.HTTP_400_BAD_REQUEST,
                         )
 
+                    try:
+                        result = change_subscription_plan(organisation, plan)
+                    except PlanDowngradeBlockedError as exc:
+                        return Response(
+                            {
+                                "detail": (
+                                    f"Cannot switch to '{plan.name}'. "
+                                    f"You currently have {exc.current_property_count} "
+                                    f"properties, but this plan only allows "
+                                    f"{exc.max_properties}. Please remove "
+                                    f"{exc.excess} properties before downgrading."
+                                ),
+                                "current_property_count": exc.current_property_count,
+                                "new_plan_max_properties": exc.max_properties,
+                                "properties_to_remove": exc.excess,
+                            },
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+
+                    # CHANGED: added requires_action and client_secret so the
+                    # frontend knows whether it must run 3D Secure before the
+                    # upgrade charge is actually complete.
                     return Response(
                         {
                             "detail": (
-                                f"You already have a subscription to "
-                                f"'{current_subscription.plan.name}'. "
-                                f"Please wait until it ends, or use the plan-change "
-                                f"flow to switch plans."
+                                "Plan upgraded successfully."
+                                if result["is_upgrade"]
+                                else "Plan downgraded successfully."
                             ),
-                            "current_plan": current_subscription.plan.name,
-                            "current_status": current_subscription.status,
-                            "next_billing_date": current_subscription.next_billing_date,
-                            "trial_end_date": current_subscription.trial_end_date,
+                            "is_upgrade": result["is_upgrade"],
+                            "account_credit": str(result["account_credit"]),
+                            "requires_action": result["requires_action"],
+                            "client_secret": result["client_secret"],
                         },
-                        status=status.HTTP_400_BAD_REQUEST,
+                        status=status.HTTP_200_OK,
                     )
 
             if current_subscription.plan_id != plan.id:
@@ -119,7 +136,6 @@ class SelectSubscriptionView(APIView):
 
                 if plan.max_properties < current_property_count:
                     excess = current_property_count - plan.max_properties
-
                     return Response(
                         {
                             "detail": (
@@ -136,46 +152,22 @@ class SelectSubscriptionView(APIView):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
-            if current_subscription.status == OrganisationSubscriptionStatus.PENDING:
+            result = create_subscription_with_client_secret(
+                organisation=organisation, user=request.user, plan=plan,
+            )
+            return Response(
+                {
+                    "subscription_id": result["subscription_id"],
+                    "client_secret": result["client_secret"],
+                    "mode": result["mode"],
+                },
+                status=status.HTTP_200_OK,
+            )
 
-                result = create_subscription_with_client_secret(
-                    organisation=organisation,
-                    user=request.user,
-                    plan=plan,
-                )
-                return Response(
-                    {
-                        "subscription_id": result["subscription_id"],
-                        "client_secret": result["client_secret"],
-                        "mode": result["mode"],
-                    },
-                    status=status.HTTP_200_OK,
-                )
-
-            if current_subscription.status in (
-                OrganisationSubscriptionStatus.ACTIVE,
-                OrganisationSubscriptionStatus.TRIALING,
-            ):
-                result = create_subscription_with_client_secret(
-                    organisation=organisation,
-                    user=request.user,
-                    plan=plan,
-                )
-                return Response(
-                    {
-                        "subscription_id": result["subscription_id"],
-                        "client_secret": result["client_secret"],
-                        "mode": result["mode"],
-                    },
-                    status=status.HTTP_200_OK,
-                )
-
+        # No subscription at all yet
         result = create_subscription_with_client_secret(
-            organisation=organisation,
-            user=request.user,
-            plan=plan,
+            organisation=organisation, user=request.user, plan=plan,
         )
-
         return Response(
             {
                 "subscription_id": result["subscription_id"],
@@ -184,7 +176,6 @@ class SelectSubscriptionView(APIView):
             },
             status=status.HTTP_200_OK,
         )
-
 
 @method_decorator(csrf_exempt, name="dispatch")
 class StripeWebhookView(View):

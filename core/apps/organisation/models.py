@@ -41,6 +41,11 @@ class Organisation(NameSlugDescriptionBaseModel):
     stripe_payouts_enabled = models.BooleanField(default=False)
     stripe_details_submitted = models.BooleanField(default=False)
     has_used_trial = models.BooleanField(default=False)
+    account_credit = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+    )
 
     class Meta:
         ordering = ["-created_at", "-updated_at"]
