@@ -1,3 +1,5 @@
+import math
+
 from dj_rest_auth.registration.serializers import SocialLoginSerializer
 from dj_rest_auth.serializers import LoginSerializer, JWTSerializer
 from django.contrib.auth import get_user_model
@@ -6,7 +8,11 @@ from django.utils import timezone
 from rest_framework import serializers
 from apps.authentication.models import EmailVerification, InviteUser
 from apps.authentication.enums import NameTitleChoices
-from apps.organisation.models import Organisation, OrganisationUser
+from apps.organisation.models import (
+    Organisation,
+    OrganisationUser,
+    OrganisationSubscription,
+)
 from apps.property.models import Tenant
 from api.utils import send_verification_email
 
@@ -173,6 +179,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     has_subscription = serializers.SerializerMethodField()
     subscription_status = serializers.SerializerMethodField()
     plan = serializers.SerializerMethodField()
+    trial_days_left = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -193,6 +200,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "has_subscription",
             "subscription_status",
             "plan",
+            "trial_days_left",
             "created_at",
             "updated_at",
         ]
@@ -239,6 +247,25 @@ class UserProfileSerializer(serializers.ModelSerializer):
         subscription = getattr(organisation, "subscription", None)
 
         return subscription.plan.plan_type if subscription else None
+
+    def get_trial_days_left(self, obj):
+        organisation = obj.get_organisation()
+
+        if not organisation:
+            return None
+
+        subscription = getattr(organisation, "subscription", None)
+        if not subscription:
+            return None
+        if (
+            subscription.status != OrganisationSubscription.Status.TRIALING
+            or not subscription.trial_end_date
+        ):
+            return None
+        remaining = subscription.trial_end_date - timezone.now()
+        if remaining.total_seconds() <= 0:
+            return 0
+        return math.ceil(remaining.total_seconds() / 86400)
 
 
 class TenantProfileSerializer(serializers.ModelSerializer):

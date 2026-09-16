@@ -2,7 +2,6 @@ import io
 from datetime import date
 
 from django.contrib.auth.hashers import make_password
-from django.core.exceptions import ValidationError
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status
@@ -13,6 +12,7 @@ from rest_framework.generics import (
     ListAPIView,
 )
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from openpyxl import Workbook
@@ -27,7 +27,10 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 
 from apps import tenant
 from apps.organisation.models import OrganisationUser
-from apps.organisation.enums import OrganisationRoleChoices
+from apps.organisation.enums import (
+    OrganisationRoleChoices,
+    OrganisationSubscriptionStatus,
+)
 from apps.property.models import (
     Property,
     Mortgage,
@@ -93,8 +96,38 @@ class PropertyListView(ListCreateAPIView):
 
     def perform_create(self, serializer):
         organisation = self.request.user.get_organisation()
+
         if not organisation:
             raise NotFound("Organisation not found for the user.")
+
+        subscription = getattr(organisation, "subscription", None)
+
+        if not subscription:
+            raise ValidationError({"subscription": "No active subscription found."})
+
+        if subscription.status not in [
+            OrganisationSubscriptionStatus.ACTIVE,
+            OrganisationSubscriptionStatus.TRIALING,
+        ]:
+            raise ValidationError({"subscription": "Your subscription is not active."})
+
+        max_properties = subscription.plan.max_properties
+
+        current_property_count = Property.objects.filter(
+            organisation=organisation
+        ).count()
+
+        if current_property_count >= max_properties:
+            raise ValidationError(
+                {
+                    "property": (
+                        f"Your {subscription.plan.name} plan allows "
+                        f"a maximum of {max_properties} properties. "
+                        "Please upgrade your plan to add more properties."
+                    )
+                }
+            )
+
         serializer.save(organisation=organisation)
 
 
