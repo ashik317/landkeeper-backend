@@ -202,8 +202,7 @@ class StripeWebhookView(View):
         elif event_type == "payment_intent.payment_failed":
             handle_payment_failed(data)
 
-        # Primary handlers — these cover renewals correctly
-        elif event_type == "invoice.payment_succeeded":
+        elif event_type in ("invoice.payment_succeeded", "invoice.paid"):
             handle_invoice_payment_succeeded(data)
 
         elif event_type == "invoice.payment_failed":

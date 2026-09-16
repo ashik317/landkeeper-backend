@@ -349,8 +349,18 @@ def create_subscription_with_client_secret(
         ],
     }
 
+    # if give_trial:
+    #     subscription_params["trial_period_days"] = 7
+    #     subscription_params["trial_settings"] = {
+    #         "end_behavior": {"missing_payment_method": "cancel"},
+    #     }
+
     if give_trial:
-        subscription_params["trial_period_days"] = 7
+        from datetime import timedelta
+        trial_end_timestamp = int(
+            (django_timezone.now() + timedelta(minutes=2)).timestamp()
+        )
+        subscription_params["trial_end"] = trial_end_timestamp
         subscription_params["trial_settings"] = {
             "end_behavior": {"missing_payment_method": "cancel"},
         }
@@ -1184,6 +1194,26 @@ def handle_subscription_updated(stripe_subscription):
     except OrganisationSubscription.DoesNotExist:
         return
 
+    stripe_status = _stripe_get(stripe_subscription, "status")
+
+    if stripe_status == "active":
+        try:
+            latest_invoice_id = _stripe_get(stripe_subscription, "latest_invoice")
+            if latest_invoice_id:
+                invoice = stripe.Invoice.retrieve(latest_invoice_id)
+                if invoice.status == "draft":
+                    invoice = stripe.Invoice.finalize_invoice(latest_invoice_id)
+                if invoice.status == "open" and invoice.amount_due > 0:
+                    stripe.Invoice.pay(latest_invoice_id)
+        except stripe.error.StripeError:
+            pass
+
+    default_pm = _stripe_get(stripe_subscription, "default_payment_method")
+    if default_pm:
+        _sync_card_from_payment_method(
+            local_subscription.organisation, default_pm
+        )
+
     items_data = _stripe_get(stripe_subscription, "items") or {}
     items = _stripe_get(items_data, "data", [])
 
@@ -1193,7 +1223,6 @@ def handle_subscription_updated(stripe_subscription):
         stripe_subscription, "cancel_at_period_end", False
     )
 
-    # Backfill start_date if it's missing (e.g. this event arrived
     # before invoice.payment_succeeded ever set it)
     if not local_subscription.start_date:
         stripe_start = _stripe_get(stripe_subscription, "start_date")
@@ -1241,8 +1270,6 @@ def handle_subscription_updated(stripe_subscription):
             except SubscriptionPlan.DoesNotExist:
                 pass
 
-    stripe_status = _stripe_get(stripe_subscription, "status")
-
     status_map = {
         "trialing": OrganisationSubscriptionStatus.TRIALING,
         "active": OrganisationSubscriptionStatus.ACTIVE,
@@ -1252,12 +1279,21 @@ def handle_subscription_updated(stripe_subscription):
     }
 
     if stripe_status in status_map:
-        local_subscription.status = status_map[stripe_status]
+        new_status = status_map[stripe_status]
+        local_subscription.status = new_status
         update_fields.append("status")
+
+        if (
+            new_status != OrganisationSubscriptionStatus.CANCELLED
+            and local_subscription.cancelled_at
+        ):
+            local_subscription.cancelled_at = None
+            update_fields.append("cancelled_at")
 
     local_subscription.save(
         update_fields=list(set(update_fields))
     )
+
 
 # EMAIL NOTIFICATIONS
 def _resolve_billing_email(organisation):
