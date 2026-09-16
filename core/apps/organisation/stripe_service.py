@@ -1050,7 +1050,6 @@ def handle_invoice_payment_succeeded(invoice):
         actual_payment_method or stripe_subscription.default_payment_method,
     )
 
-
     # most recently used.
     if actual_payment_method:
         actual_pm_id = (
@@ -1069,11 +1068,11 @@ def handle_invoice_payment_succeeded(invoice):
             )
 
     invoice_line = invoice["lines"]["data"][0] if invoice["lines"]["data"] else None
-    period_end_ts = (
-        _stripe_get(invoice_line, "period", {}).get("end")
-        if invoice_line
-        else None
-    )
+
+    period_end_ts = None
+    if invoice_line:
+        period_data = _stripe_get(invoice_line, "period") or {}
+        period_end_ts = _stripe_get(period_data, "end")
 
     if period_end_ts is None:
         subscription_item = stripe_subscription.items.data[0]
