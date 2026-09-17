@@ -44,6 +44,7 @@ class SelectSubscriptionView(APIView):
 
     def post(self, request):
         plan_id = request.data.get("plan_id")
+        payment_method_id = request.data.get("payment_method_id")
 
         if not plan_id:
             return Response(
@@ -150,7 +151,10 @@ class SelectSubscriptionView(APIView):
                     )
 
             result = create_subscription_with_client_secret(
-                organisation=organisation, user=request.user, plan=plan,
+                organisation=organisation,
+                user=request.user,
+                plan=plan,
+                payment_method_id=payment_method_id,
             )
             return Response(
                 {
@@ -163,7 +167,10 @@ class SelectSubscriptionView(APIView):
 
         # No subscription at all yet
         result = create_subscription_with_client_secret(
-            organisation=organisation, user=request.user, plan=plan,
+            organisation=organisation,
+            user=request.user,
+            plan=plan,
+            payment_method_id=payment_method_id,
         )
         return Response(
             {
