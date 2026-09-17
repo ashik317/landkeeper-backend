@@ -1,4 +1,6 @@
 import uuid
+from typing import Any
+
 from django.db import transaction
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
@@ -11,10 +13,11 @@ from django.conf import settings
 from rest_framework.generics import (
     ListAPIView,
     RetrieveUpdateAPIView,
-    RetrieveUpdateDestroyAPIView,
+    RetrieveUpdateDestroyAPIView, ListCreateAPIView,
 )
+from rest_framework.request import Request
 from rest_framework.views import APIView
-from rest_framework import status, serializers
+from rest_framework import status, serializers, response
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
@@ -24,6 +27,7 @@ from api.serializers.subscription import (
     BillingHistorySerializer,
     OrganisationSubscriptionStatusSerializer,
 )
+from api.views import organisation
 from apps.organisation.enums import OrganisationSubscriptionStatus
 from apps.organisation.stripe_service import (
     handle_payment_success,
@@ -34,7 +38,7 @@ from apps.organisation.stripe_service import (
     handle_subscription_updated,
     create_subscription_with_client_secret,
     change_subscription_plan,
-    PlanDowngradeBlockedError,
+    PlanDowngradeBlockedError, sync_payment_method_to_organisation,
 )
 from apps.subscription.models import SubscriptionPlan, PaymentCard, PaymentTransaction
 from apps.organisation.models import OrganisationSubscription
@@ -238,26 +242,6 @@ class SubscriptionPlanListView(ListAPIView):
             SubscriptionPlan.objects.filter(is_active=True)
             .prefetch_related("features")
             .order_by("monthly_price")
-        )
-
-
-class LandlordPaymentCardListAPIView(APIView):
-    permission_classes = [IsLandlord]
-
-    def get(self, request):
-        organisation = request.user.get_organisation()
-
-        cards = PaymentCard.objects.filter(organisation=organisation).order_by(
-            "-is_default", "-id"
-        )
-
-        serializer = PaymentCardSerializer(cards, many=True)
-
-        return Response(
-            {
-                "cards": serializer.data,
-            },
-            status=status.HTTP_200_OK,
         )
 
 
@@ -468,4 +452,58 @@ class SubscriptionPermissionView(APIView):
                 "max_properties": max_properties,
             },
             status=status.HTTP_200_OK,
+        )
+
+class LandlordPaymentCardCreateAPIView(ListCreateAPIView):
+    permission_classes = [IsLandlord]
+    serializer_class = PaymentCardSerializer
+
+    def get_queryset(self):
+        organisation = self.request.user.get_organisation()
+        return PaymentCard.objects.filter(organisation=organisation).order_by(
+            "-is_default", "-id"
+        )
+
+    def create(self, request, *args, **kwargs):
+        payment_method_id = request.data.get("payment_method_id")
+        set_default = request.data.get("is_default", True)
+
+        if not payment_method_id:
+            return Response(
+                {"detail": "payment_method_id is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        organisation = request.user.get_organisation()
+
+        if not organisation.stripe_customer_id:
+            return Response(
+                {"detail": "Organisation does not have a Stripe customer yet."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            payment_card = sync_payment_method_to_organisation(
+                organisation=organisation,
+                payment_method_id=payment_method_id,
+                set_default=set_default,
+            )
+        except ValueError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except stripe.error.StripeError as exc:
+            return Response(
+                {"detail": f"Payment provider error: {exc.user_message or str(exc)}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        serializer = self.get_serializer(payment_card)
+        return Response(
+            {
+                "detail": "Card added successfully.",
+                "card": serializer.data,
+            },
+            status=status.HTTP_201_CREATED,
         )

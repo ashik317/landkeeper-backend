@@ -4,11 +4,11 @@ from api.views.subscription import (
     SelectSubscriptionView,
     StripeWebhookView,
     SubscriptionPlanListView,
-    LandlordPaymentCardListAPIView,
     LandlordPaymentCardUpdateDeleteAPIView,
     LandlordBillingHistoryAPIView,
     LandlordSubscriptionAPIView,
     SubscriptionPermissionView,
+    LandlordPaymentCardCreateAPIView,
 )
 
 urlpatterns = [
@@ -33,11 +33,6 @@ urlpatterns = [
         name="stripe-webhook",
     ),
     path(
-        "/cards",
-        LandlordPaymentCardListAPIView.as_view(),
-        name="landlord-payment-card-list",
-    ),
-    path(
         "/cards/<uuid:alias>",
         LandlordPaymentCardUpdateDeleteAPIView.as_view(),
         name="landlord-payment-card-delete",
@@ -51,5 +46,10 @@ urlpatterns = [
         "",
         LandlordSubscriptionAPIView.as_view(),
         name="landlord-subscription",
+    ),
+    path(
+        "/cards",
+        LandlordPaymentCardCreateAPIView.as_view(),
+        name="landlord-payment-card-list-create"
     ),
 ]
