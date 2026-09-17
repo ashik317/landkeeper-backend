@@ -1,6 +1,3 @@
-import uuid
-from typing import Any
-
 from django.db import transaction
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
@@ -15,7 +12,6 @@ from rest_framework.generics import (
     RetrieveUpdateAPIView,
     RetrieveUpdateDestroyAPIView, ListCreateAPIView,
 )
-from rest_framework.request import Request
 from rest_framework.views import APIView
 from rest_framework import status, serializers, response
 from rest_framework.response import Response
@@ -27,7 +23,6 @@ from api.serializers.subscription import (
     BillingHistorySerializer,
     OrganisationSubscriptionStatusSerializer,
 )
-from api.views import organisation
 from apps.organisation.enums import OrganisationSubscriptionStatus
 from apps.organisation.stripe_service import (
     handle_payment_success,
@@ -38,7 +33,10 @@ from apps.organisation.stripe_service import (
     handle_subscription_updated,
     create_subscription_with_client_secret,
     change_subscription_plan,
-    PlanDowngradeBlockedError, sync_payment_method_to_organisation,
+    PlanDowngradeBlockedError,
+    sync_payment_method_to_organisation,
+    schedule_plan_downgrade,
+    get_pending_downgrade_info,
 )
 from apps.subscription.models import SubscriptionPlan, PaymentCard, PaymentTransaction
 from apps.organisation.models import OrganisationSubscription
@@ -104,39 +102,65 @@ class SelectSubscriptionView(APIView):
                             status=status.HTTP_400_BAD_REQUEST,
                         )
 
-                    try:
-                        result = change_subscription_plan(organisation, plan)
-                    except PlanDowngradeBlockedError as exc:
+                    is_upgrade_request = (
+                        plan.monthly_price > current_subscription.plan.monthly_price
+                    )
+
+                    if is_upgrade_request:
+                        try:
+                            result = change_subscription_plan(organisation, plan)
+                        except PlanDowngradeBlockedError as exc:
+                            return Response(
+                                {
+                                    "detail": (
+                                        f"Cannot switch to '{plan.name}'. "
+                                        f"You currently have {exc.current_property_count} "
+                                        f"properties, but this plan only allows "
+                                        f"{exc.max_properties}. Please remove "
+                                        f"{exc.excess} properties before downgrading."
+                                    ),
+                                    "current_property_count": exc.current_property_count,
+                                    "new_plan_max_properties": exc.max_properties,
+                                    "properties_to_remove": exc.excess,
+                                },
+                                status=status.HTTP_400_BAD_REQUEST,
+                            )
+
                         return Response(
                             {
-                                "detail": (
-                                    f"Cannot switch to '{plan.name}'. "
-                                    f"You currently have {exc.current_property_count} "
-                                    f"properties, but this plan only allows "
-                                    f"{exc.max_properties}. Please remove "
-                                    f"{exc.excess} properties before downgrading."
-                                ),
-                                "current_property_count": exc.current_property_count,
-                                "new_plan_max_properties": exc.max_properties,
-                                "properties_to_remove": exc.excess,
+                                "detail": "Plan upgraded successfully.",
+                                "is_upgrade": True,
+                                "account_credit": str(result["account_credit"]),
+                                "requires_action": result["requires_action"],
+                                "client_secret": result["client_secret"],
                             },
-                            status=status.HTTP_400_BAD_REQUEST,
+                            status=status.HTTP_200_OK,
                         )
+                    else:
+                        # Downgrade: schedule the switch for the next billing
+                        # cycle instead of applying it immediately. No charge
+                        # happens now — the user keeps their current plan
+                        # until the current period ends.
+                        try:
+                            result = schedule_plan_downgrade(organisation, plan)
+                        except PlanDowngradeBlockedError as exc:
+                            return Response(
+                                {
+                                    "detail": (
+                                        f"Cannot switch to '{plan.name}'. "
+                                        f"You currently have {exc.current_property_count} "
+                                        f"properties, but this plan only allows "
+                                        f"{exc.max_properties}. Please remove "
+                                        f"{exc.excess} properties before downgrading."
+                                    ),
+                                    "current_property_count": exc.current_property_count,
+                                    "new_plan_max_properties": exc.max_properties,
+                                    "properties_to_remove": exc.excess,
+                                },
+                                status=status.HTTP_400_BAD_REQUEST,
+                            )
 
-                    return Response(
-                        {
-                            "detail": (
-                                "Plan upgraded successfully."
-                                if result["is_upgrade"]
-                                else "Plan downgraded successfully."
-                            ),
-                            "is_upgrade": result["is_upgrade"],
-                            "account_credit": str(result["account_credit"]),
-                            "requires_action": result["requires_action"],
-                            "client_secret": result["client_secret"],
-                        },
-                        status=status.HTTP_200_OK,
-                    )
+                        return Response(result, status=status.HTTP_200_OK)
 
             if current_subscription.plan_id != plan.id:
                 current_property_count = organisation.organisation_properties.count()
@@ -390,6 +414,28 @@ class LandlordSubscriptionAPIView(RetrieveUpdateAPIView):
             organisation=organisation,
         )
 
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        data = serializer.data
+
+        pending_info = get_pending_downgrade_info(instance)
+        if pending_info:
+            pending_plan = pending_info["plan"]
+            data["pending_plan"] = {
+                "alias": str(pending_plan.alias),
+                "name": pending_plan.name,
+                "plan_type": pending_plan.plan_type,
+                "monthly_price": str(pending_plan.monthly_price),
+                "max_properties": pending_plan.max_properties,
+                "effective_date": pending_info["effective_date"],
+            }
+        else:
+            data["pending_plan"] = None
+
+        return Response(data)
+
+
     def perform_update(self, serializer):
         with transaction.atomic():
             subscription = self.get_object()
@@ -412,6 +458,7 @@ class LandlordSubscriptionAPIView(RetrieveUpdateAPIView):
 
             subscription.auto_renew = auto_renew
             subscription.save(update_fields=["auto_renew"])
+
 
 class SubscriptionPermissionView(APIView):
     permission_classes = [IsAuthenticated]
