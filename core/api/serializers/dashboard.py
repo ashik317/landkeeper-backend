@@ -64,8 +64,21 @@ class DashboardSupportSerializer(serializers.Serializer):
     in_progress = serializers.IntegerField()
 
 
+class DashboardMortgagesSerializer(serializers.Serializer):
+    total = serializers.IntegerField()
+    total_outstanding = serializers.DecimalField(
+        max_digits=20,
+        decimal_places=2,
+    )
+    fixed_rate = serializers.IntegerField()
+    variable_rate = serializers.IntegerField()
+    tracker = serializers.IntegerField()
+    offset = serializers.IntegerField()
+
+
 class LandlordDashboardSummarySerializer(serializers.Serializer):
     properties = DashboardPropertiesSerializer()
+    mortgages = DashboardMortgagesSerializer()
     tenants = DashboardTenantsSerializer()
     financial = DashboardFinancialSerializer()
     compliance = DashboardComplianceSerializer()

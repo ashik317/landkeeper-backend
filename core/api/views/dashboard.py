@@ -20,6 +20,7 @@ from apps.property.enums import (
     TransactionType,
     PropertyType,
     CertificateType,
+    ProductType,
 )
 from apps.supportticket.enums import SupportTicketStatus
 
@@ -75,12 +76,18 @@ class LandlordDashboardSummaryView(RetrieveAPIView):
         # ---------------------------------------------------------
 
         mortgages = Mortgage.objects.filter(organisation=organisation)
+        mortgage_total = mortgages.count()
         mortgage_outstanding = mortgages.aggregate(total=Sum("outstanding_balance"))[
             "total"
         ] or Decimal("0.00")
         monthly_mortgage_payment = mortgages.aggregate(total=Sum("monthly_payment"))[
             "total"
         ] or Decimal("0.00")
+        mortgage_product_type_counts = dict(
+            mortgages.values("interest_rate_type")
+            .annotate(count=Count("id"))
+            .values_list("interest_rate_type", "count")
+        )
 
         # ---------------------------------------------------------
         # Finance - current month
@@ -157,6 +164,26 @@ class LandlordDashboardSummaryView(RetrieveAPIView):
                 "occupied": property_occupied,
                 "vacant": property_vacant,
                 "under_maintenance": property_under_maintenance,
+            },
+            "mortgages": {
+                "total": mortgage_total,
+                "total_outstanding": mortgage_outstanding,
+                "fixed_rate": mortgage_product_type_counts.get(
+                    ProductType.FIXED_RATE,
+                    0,
+                ),
+                "variable_rate": mortgage_product_type_counts.get(
+                    ProductType.VARIABLE_RATE,
+                    0,
+                ),
+                "tracker": mortgage_product_type_counts.get(
+                    ProductType.TRACKER,
+                    0,
+                ),
+                "offset": mortgage_product_type_counts.get(
+                    ProductType.OFFSET,
+                    0,
+                ),
             },
             "tenants": {
                 "total": tenant_total,
