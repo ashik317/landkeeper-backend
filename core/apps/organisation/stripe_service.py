@@ -701,7 +701,7 @@ def change_subscription_plan(organisation, new_plan):
 
     modify_kwargs = {
         "items": [{"id": subscription_item_id, "price": price_id}],
-        "proration_behavior": "create_prorations",
+        "proration_behavior": "create_prorations" if is_upgrade else "none",
         "metadata": {"organisation_id": str(organisation.id), "plan_id": str(new_plan.id)},
     }
 
@@ -716,7 +716,6 @@ def change_subscription_plan(organisation, new_plan):
     organisation_subscription.plan = new_plan
     update_fields = ["plan"]
 
-    # Only sync period dates when NOT trialing — during trial the
     # existing trial_end_date/next_billing_date stay untouched.
     if not is_trialing:
         items = updated_subscription["items"]["data"]
@@ -742,7 +741,6 @@ def change_subscription_plan(organisation, new_plan):
     requires_action = False
     payment_client_secret = None
 
-    # Only actually bill something if NOT trialing — during an active
     # trial there's nothing to charge yet.
     if not is_trialing:
         invoice = stripe.Invoice.create(

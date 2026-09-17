@@ -14,7 +14,7 @@ from rest_framework.generics import (
     RetrieveUpdateDestroyAPIView,
 )
 from rest_framework.views import APIView
-from rest_framework import status
+from rest_framework import status, serializers
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
@@ -232,7 +232,6 @@ class StripeWebhookView(View):
 
 class SubscriptionPlanListView(ListAPIView):
     serializer_class = SubscriptionPlanSerializer
-    # permission_classes = []
 
     def get_queryset(self):
         return (
@@ -386,6 +385,7 @@ class LandlordBillingHistoryAPIView(ListAPIView):
             PaymentTransaction.objects.filter(
                 organisation=organisation,
             )
+            .exclude(amount=0)
             .select_related(
                 "subscription",
                 "subscription__plan",
@@ -415,9 +415,19 @@ class LandlordSubscriptionAPIView(RetrieveUpdateAPIView):
                 subscription.auto_renew,
             )
 
+            if subscription.stripe_subscription_id and auto_renew != subscription.auto_renew:
+                try:
+                    stripe.Subscription.modify(
+                        subscription.stripe_subscription_id,
+                        cancel_at_period_end=not auto_renew,
+                    )
+                except stripe.error.StripeError as e:
+                    raise serializers.ValidationError(
+                        {"detail": f"Could not update auto-renew with payment provider: {e}"}
+                    )
+
             subscription.auto_renew = auto_renew
             subscription.save(update_fields=["auto_renew"])
-
 
 class SubscriptionPermissionView(APIView):
     permission_classes = [IsAuthenticated]
