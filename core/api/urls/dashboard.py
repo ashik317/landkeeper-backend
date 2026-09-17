@@ -8,17 +8,17 @@ from ..views.dashboard import (
 
 urlpatterns = [
     path(
-        "/landlord/summary",
+        "/summary",
         LandlordDashboardSummaryView.as_view(),
         name="landlord-dashboard-summary",
     ),
     path(
-        "/landlord/property-types",
+        "/property-types",
         LandlordPropertyTypeDashboardView.as_view(),
         name="dashboard-property-types",
     ),
     path(
-        "/landlord/compliance-types",
+        "/compliance-types",
         LandlordComplianceTypeDashboardView.as_view(),
         name="dashboard-compliance-types",
     ),

@@ -16,6 +16,7 @@ from rest_framework.generics import (
 from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 
 from api.serializers.subscription import (
     SubscriptionPlanSerializer,
@@ -37,6 +38,7 @@ from apps.organisation.stripe_service import (
 )
 from apps.subscription.models import SubscriptionPlan, PaymentCard, PaymentTransaction
 from apps.organisation.models import OrganisationSubscription
+from apps.property.models import Property
 from common.permission import IsLandlord
 
 
@@ -44,6 +46,7 @@ class SelectSubscriptionView(APIView):
 
     def post(self, request):
         plan_id = request.data.get("plan_id")
+        payment_method_id = request.data.get("payment_method_id")
 
         if not plan_id:
             return Response(
@@ -75,7 +78,10 @@ class SelectSubscriptionView(APIView):
             ):
                 now = timezone.now()
 
-                if current_subscription.status == OrganisationSubscriptionStatus.TRIALING:
+                if (
+                    current_subscription.status
+                    == OrganisationSubscriptionStatus.TRIALING
+                ):
                     period_over = (
                         current_subscription.trial_end_date is not None
                         and now >= current_subscription.trial_end_date
@@ -150,7 +156,10 @@ class SelectSubscriptionView(APIView):
                     )
 
             result = create_subscription_with_client_secret(
-                organisation=organisation, user=request.user, plan=plan,
+                organisation=organisation,
+                user=request.user,
+                plan=plan,
+                payment_method_id=payment_method_id,
             )
             return Response(
                 {
@@ -163,7 +172,10 @@ class SelectSubscriptionView(APIView):
 
         # No subscription at all yet
         result = create_subscription_with_client_secret(
-            organisation=organisation, user=request.user, plan=plan,
+            organisation=organisation,
+            user=request.user,
+            plan=plan,
+            payment_method_id=payment_method_id,
         )
         return Response(
             {
@@ -173,6 +185,7 @@ class SelectSubscriptionView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
 
 @method_decorator(csrf_exempt, name="dispatch")
 class StripeWebhookView(View):
@@ -404,3 +417,45 @@ class LandlordSubscriptionAPIView(RetrieveUpdateAPIView):
 
             subscription.auto_renew = auto_renew
             subscription.save(update_fields=["auto_renew"])
+
+
+class SubscriptionPermissionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        organisation = request.user.get_organisation()
+
+        if not organisation:
+            return Response(
+                {"detail": "Organisation not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        subscription = (
+            OrganisationSubscription.objects.filter(organisation=organisation)
+            .select_related("plan")
+            .first()
+        )
+
+        if not subscription:
+            return Response(
+                {"detail": "No subscription found for this organisation."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        current_property_count = Property.objects.filter(
+            organisation=organisation
+        ).count()
+
+        max_properties = subscription.plan.max_properties
+
+        can_create_property = current_property_count < max_properties
+
+        return Response(
+            {
+                "can_create_property": can_create_property,
+                "property_count": current_property_count,
+                "max_properties": max_properties,
+            },
+            status=status.HTTP_200_OK,
+        )

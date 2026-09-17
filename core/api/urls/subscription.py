@@ -8,9 +8,15 @@ from api.views.subscription import (
     LandlordPaymentCardUpdateDeleteAPIView,
     LandlordBillingHistoryAPIView,
     LandlordSubscriptionAPIView,
+    SubscriptionPermissionView,
 )
 
 urlpatterns = [
+    path(
+        "/permissions",
+        SubscriptionPermissionView.as_view(),
+        name="subscription-permission",
+    ),
     path(
         "/plans",
         SubscriptionPlanListView.as_view(),
