@@ -978,6 +978,16 @@ def handle_invoice_payment_succeeded(invoice):
     is_trial_conversion = (not organisation.has_used_trial) and amount_paid > 0
 
     if amount_paid <= 0:
+        stripe_subscription = stripe.Subscription.retrieve(subscription_id)
+
+        pm_id = actual_payment_method or stripe_subscription.default_payment_method
+        pm_id_str = pm_id if isinstance(pm_id, str) else (pm_id.id if pm_id else None)
+        card_obj = (
+            PaymentCard.objects.filter(stripe_payment_method_id=pm_id_str).first()
+            if pm_id_str
+            else None
+        )
+
         PaymentTransaction.objects.get_or_create(
             organisation=organisation,
             stripe_invoice_id=_stripe_get(invoice, "id"),
@@ -989,10 +999,9 @@ def handle_invoice_payment_succeeded(invoice):
                 "attempt_number": 1,
                 "invoice_pdf_url": _stripe_get(invoice, "invoice_pdf"),
                 "plan_name_snapshot": local_subscription.plan.name,
+                "card": card_obj,
             },
         )
-
-        stripe_subscription = stripe.Subscription.retrieve(subscription_id)
 
         # with nothing to charge won't have a payment_intent at all).
         _sync_card_from_payment_method(
@@ -1009,6 +1018,16 @@ def handle_invoice_payment_succeeded(invoice):
         else {"stripe_invoice_id": _stripe_get(invoice, "id")}
     )
 
+    stripe_subscription = stripe.Subscription.retrieve(subscription_id)
+
+    pm_id = actual_payment_method or stripe_subscription.default_payment_method
+    pm_id_str = pm_id if isinstance(pm_id, str) else (pm_id.id if pm_id else None)
+    card_obj = (
+        PaymentCard.objects.filter(stripe_payment_method_id=pm_id_str).first()
+        if pm_id_str
+        else None
+    )
+
     with transaction.atomic():
         payment_transaction, created = PaymentTransaction.objects.get_or_create(
             organisation=organisation,
@@ -1023,6 +1042,7 @@ def handle_invoice_payment_succeeded(invoice):
                 "invoice_pdf_url": _stripe_get(invoice, "invoice_pdf"),
                 "stripe_payment_intent_id": payment_intent_id,
                 "plan_name_snapshot": local_subscription.plan.name,
+                "card": card_obj,
             },
         )
 
@@ -1031,16 +1051,16 @@ def handle_invoice_payment_succeeded(invoice):
             payment_transaction.amount = amount_paid
             payment_transaction.stripe_invoice_id = _stripe_get(invoice, "id")
             payment_transaction.invoice_pdf_url = _stripe_get(invoice, "invoice_pdf")
+            payment_transaction.card = card_obj
             payment_transaction.save(
                 update_fields=[
                     "status",
                     "amount",
                     "stripe_invoice_id",
                     "invoice_pdf_url",
+                    "card",
                 ]
             )
-
-    stripe_subscription = stripe.Subscription.retrieve(subscription_id)
 
     # subscription default.
     _sync_card_from_payment_method(
@@ -1112,7 +1132,6 @@ def handle_invoice_payment_succeeded(invoice):
             amount=amount_paid,
             plan=local_subscription.plan,
         )
-
 
 # INVOICE PAYMENT FAILED
 def handle_invoice_payment_failed(invoice):

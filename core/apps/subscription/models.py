@@ -114,6 +114,13 @@ class PaymentTransaction(CreatedAtUpdatedAtBaseModel):
     subscription = models.ForeignKey(
         "organisation.OrganisationSubscription", on_delete=models.CASCADE, related_name="transactions"
     )
+    card = models.ForeignKey(
+        "subscription.PaymentCard",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="transactions",
+    )
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     currency = models.CharField(max_length=3, default="GBP")
     stripe_payment_intent_id = models.CharField(

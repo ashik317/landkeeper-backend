@@ -73,6 +73,8 @@ class PaymentCardSerializer(serializers.ModelSerializer):
 
 class BillingHistorySerializer(serializers.ModelSerializer):
     plan_name = serializers.SerializerMethodField()
+    last_four = serializers.SerializerMethodField()
+    card_brand = serializers.SerializerMethodField()
 
     class Meta:
         model = PaymentTransaction
@@ -83,6 +85,8 @@ class BillingHistorySerializer(serializers.ModelSerializer):
             "currency",
             "status",
             "attempt_number",
+            "last_four",
+            "card_brand",
             "created_at",
             "invoice_pdf_url",
         ]
@@ -90,6 +94,12 @@ class BillingHistorySerializer(serializers.ModelSerializer):
 
     def get_plan_name(self, obj):
         return obj.plan_name_snapshot or obj.subscription.plan.name
+
+    def get_last_four(self, obj):
+        return obj.card.last_four if obj.card else None
+
+    def get_card_brand(self, obj):
+        return obj.card.card_brand if obj.card else None
 
 
 class OrganisationSubscriptionStatusSerializer(serializers.ModelSerializer):
