@@ -1,6 +1,6 @@
 import logging
 import secrets
-
+from urllib.parse import urlencode
 import stripe
 from django.conf import settings
 from django.core.cache import cache
@@ -12,7 +12,6 @@ STATE_CACHE_PREFIX = "stripe_oauth_state:"
 STATE_TTL_SECONDS = 600
 
 def get_oauth_authorize_url(organisation, user):
-    # Random, unguessable token — not the organisation id
     state_token = secrets.token_urlsafe(32)
 
     cache.set(
@@ -24,13 +23,19 @@ def get_oauth_authorize_url(organisation, user):
         timeout=STATE_TTL_SECONDS,
     )
 
+    params = {
+        "response_type": "code",
+        "client_id": settings.STRIPE_CONNECT_CLIENT_ID,
+        "scope": "read_write",
+        "state": state_token,
+        "redirect_uri": (
+            f"{settings.FRONTEND_URL}/client/profile-settings"
+        ),
+    }
+
     return (
-        "https://connect.stripe.com/oauth/authorize"
-        f"?response_type=code"
-        f"&client_id={settings.STRIPE_CONNECT_CLIENT_ID}"
-        f"&scope=read_write"
-        f"&state={state_token}"
-        f"&redirect_uri={settings.FRONTEND_URL}/settings/payments/oauth-callback"
+        "https://connect.stripe.com/oauth/authorize?"
+        + urlencode(params)
     )
 
 def exchange_oauth_code(code):
