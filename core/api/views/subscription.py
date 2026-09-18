@@ -1,3 +1,5 @@
+import logging
+from stripe import InvalidRequestError
 from django.db import transaction
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
@@ -42,6 +44,21 @@ from apps.subscription.models import SubscriptionPlan, PaymentCard, PaymentTrans
 from apps.organisation.models import OrganisationSubscription
 from apps.property.models import Property
 from common.permission import IsLandlord
+logger = logging.getLogger(__name__)
+
+def _release_pending_schedule(current_subscription):
+    stripe_sub = stripe.Subscription.retrieve(
+        current_subscription.stripe_subscription_id
+    )
+    schedule_id = stripe_sub.get("schedule")
+
+    if schedule_id:
+        stripe.SubscriptionSchedule.release(schedule_id)
+        logger.info(
+            "Released pending schedule %s for subscription %s before upgrade",
+            schedule_id,
+            current_subscription.stripe_subscription_id,
+        )
 
 
 class SelectSubscriptionView(APIView):
@@ -108,6 +125,8 @@ class SelectSubscriptionView(APIView):
 
                     if is_upgrade_request:
                         try:
+                            _release_pending_schedule(current_subscription)
+
                             result = change_subscription_plan(organisation, plan)
                         except PlanDowngradeBlockedError as exc:
                             return Response(
@@ -125,6 +144,23 @@ class SelectSubscriptionView(APIView):
                                 },
                                 status=status.HTTP_400_BAD_REQUEST,
                             )
+                        except InvalidRequestError as exc:
+                            logger.warning(
+                                "Stripe rejected plan upgrade for org %s: %s",
+                                organisation.id,
+                                exc,
+                            )
+                            return Response(
+                                {
+                                    "detail": (
+                                        "We couldn't switch your plan because a plan "
+                                        "change is already in progress on your "
+                                        "subscription. Please try again in a moment, "
+                                        "or contact support if this persists."
+                                    )
+                                },
+                                status=status.HTTP_409_CONFLICT,
+                            )
 
                         return Response(
                             {
@@ -137,10 +173,6 @@ class SelectSubscriptionView(APIView):
                             status=status.HTTP_200_OK,
                         )
                     else:
-                        # Downgrade: schedule the switch for the next billing
-                        # cycle instead of applying it immediately. No charge
-                        # happens now — the user keeps their current plan
-                        # until the current period ends.
                         try:
                             result = schedule_plan_downgrade(organisation, plan)
                         except PlanDowngradeBlockedError as exc:
@@ -158,6 +190,24 @@ class SelectSubscriptionView(APIView):
                                     "properties_to_remove": exc.excess,
                                 },
                                 status=status.HTTP_400_BAD_REQUEST,
+                            )
+                        except InvalidRequestError as exc:
+                            logger.warning(
+                                "Stripe rejected scheduled downgrade for org %s: %s",
+                                organisation.id,
+                                exc,
+                            )
+                            return Response(
+                                {
+                                    "detail": (
+                                        "We couldn't schedule that plan change "
+                                        "because a change is already in progress "
+                                        "on your subscription. Please try again "
+                                        "in a moment, or contact support if this "
+                                        "persists."
+                                    )
+                                },
+                                status=status.HTTP_409_CONFLICT,
                             )
 
                         return Response(result, status=status.HTTP_200_OK)
