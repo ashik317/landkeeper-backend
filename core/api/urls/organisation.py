@@ -8,6 +8,7 @@ from api.views.organisation import (
     StripeConnectStatusView,
     StripeConnectOAuthStartView,
     StripeConnectOAuthCallbackView,
+    StripeConnectDisconnectView
 )
 
 urlpatterns = [
@@ -50,5 +51,10 @@ urlpatterns = [
         "/stripe-connect-status",
         StripeConnectStatusView.as_view(),
         name="organisation-stripe-connect-status",
+    ),
+    path(
+    "/stripe/disconnect",
+        StripeConnectDisconnectView.as_view(),
+        name="stripe-connect-disconnect",
     ),
 ]

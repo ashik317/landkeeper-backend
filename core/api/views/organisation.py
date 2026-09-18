@@ -1,4 +1,5 @@
 import stripe
+from django.conf import settings
 from rest_framework import status
 from rest_framework.exceptions import NotFound
 from rest_framework.generics import (
@@ -108,6 +109,18 @@ class StripeConnectOAuthStartView(APIView):
                 {"error": "No organisation found."}, status=status.HTTP_400_BAD_REQUEST
             )
 
+        if organisation.stripe_account_id:
+            try:
+                account = stripe.Account.retrieve(organisation.stripe_account_id)
+                if account.details_submitted and account.charges_enabled:
+                    return Response(
+                        {"error": "This organisation is already connected to a Stripe account."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            except stripe.error.StripeError:
+                organisation.stripe_account_id = None
+                organisation.save(update_fields=["stripe_account_id"])
+
         authorize_url = get_oauth_authorize_url(organisation, request.user)
         return Response({"authorize_url": authorize_url}, status=status.HTTP_200_OK)
 
@@ -136,7 +149,7 @@ class StripeConnectOAuthCallbackView(APIView):
                 {"error": "Missing code or state."}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        organisation = verify_and_consume_state(state, request.user)  # ← এটা ব্যবহার হচ্ছে কিনা
+        organisation = verify_and_consume_state(state, request.user)
 
         if not organisation:
             logger.warning(
@@ -187,4 +200,53 @@ class StripeConnectStatusView(APIView):
                 "payouts_enabled": organisation.stripe_payouts_enabled,
                 "details_submitted": organisation.stripe_details_submitted,
             }
+        )
+
+class StripeConnectDisconnectView(APIView):
+    permission_classes = [IsLandlord]
+
+    def post(self, request):
+        organisation = request.user.get_organisation()
+        if not organisation:
+            return Response(
+                {"error": "No organisation found."}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not organisation.stripe_account_id:
+            return Response(
+                {"error": "This organisation is not connected to a Stripe account."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            stripe.OAuth.deauthorize(
+                client_id=settings.STRIPE_CONNECT_CLIENT_ID,
+                stripe_user_id=organisation.stripe_account_id,
+            )
+        except stripe.error.StripeError as e:
+            logger.warning(
+                "Stripe OAuth deauthorize failed",
+                extra={"organisation_id": organisation.id, "error": str(e)},
+            )
+
+        organisation.stripe_account_id = None
+        organisation.stripe_publishable_key = None
+        organisation.stripe_access_token_encrypted = None
+        organisation.stripe_charges_enabled = False
+        organisation.stripe_payouts_enabled = False
+        organisation.stripe_details_submitted = False
+        organisation.save(
+            update_fields=[
+                "stripe_account_id",
+                "stripe_publishable_key",
+                "stripe_access_token_encrypted",
+                "stripe_charges_enabled",
+                "stripe_payouts_enabled",
+                "stripe_details_submitted",
+            ]
+        )
+
+        return Response(
+            {"detail": "Stripe account disconnected successfully."},
+            status=status.HTTP_200_OK,
         )
