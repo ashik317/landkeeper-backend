@@ -1374,3 +1374,101 @@ def send_renewal_payment_failed_email(organisation):
         from_email=settings.DEFAULT_FROM_EMAIL,
         recipient_list=[billing_email],
     )
+
+# SCHEDULE A PLAN DOWNGRADE FOR NEXT BILLING CYCLE
+def schedule_plan_downgrade(organisation, new_plan):
+    organisation_subscription = getattr(organisation, "subscription", None)
+
+    if not organisation_subscription or not organisation_subscription.stripe_subscription_id:
+        raise ValueError("Organisation has no active Stripe subscription.")
+
+    current_count = organisation.organisation_properties.count()
+    if new_plan.max_properties < current_count:
+        excess = current_count - new_plan.max_properties
+        raise PlanDowngradeBlockedError(
+            current_property_count=current_count,
+            max_properties=new_plan.max_properties,
+            excess=excess,
+        )
+
+    new_price_id = get_or_create_stripe_price(new_plan)
+
+    stripe_subscription = stripe.Subscription.retrieve(
+        organisation_subscription.stripe_subscription_id
+    )
+    current_item = stripe_subscription["items"]["data"][0]
+    current_price_id = current_item["price"]["id"]
+    current_period_start = current_item["current_period_start"]
+    current_period_end = current_item["current_period_end"]
+    schedule = stripe.SubscriptionSchedule.create(
+        from_subscription=organisation_subscription.stripe_subscription_id,
+    )
+
+    stripe.SubscriptionSchedule.modify(
+        schedule.id,
+        end_behavior="release",
+        phases=[
+            {
+                "items": [{"price": current_price_id, "quantity": 1}],
+                "start_date": current_period_start,
+                "end_date": current_period_end,
+                "proration_behavior": "none",
+            },
+            {
+                "items": [{"price": new_price_id, "quantity": 1}],
+                "start_date": current_period_end,
+                "proration_behavior": "none",
+            },
+        ],
+    )
+
+    effective_date = datetime.fromtimestamp(current_period_end, tz=timezone.utc)
+
+    organisation_subscription.pending_plan = new_plan
+    organisation_subscription.pending_plan_effective_date = effective_date
+    organisation_subscription.stripe_schedule_id = schedule.id
+    organisation_subscription.save(
+        update_fields=[
+            "pending_plan",
+            "pending_plan_effective_date",
+            "stripe_schedule_id",
+        ]
+    )
+
+    return {
+        "detail": (
+            f"Your plan will switch to {new_plan.name} on "
+            f"{effective_date.date()}. You'll keep your current plan "
+            f"and won't be charged until then."
+        ),
+        "effective_date": effective_date.isoformat(),
+        "pending_plan": new_plan.name,
+    }
+
+def get_pending_downgrade_info(organisation_subscription):
+    if not organisation_subscription.stripe_schedule_id:
+        return None
+
+    try:
+        schedule = stripe.SubscriptionSchedule.retrieve(
+            organisation_subscription.stripe_schedule_id
+        )
+    except stripe.error.InvalidRequestError:
+        return None
+
+    if schedule.status != "active" or len(schedule.phases) < 2:
+        return None
+
+    next_phase = schedule.phases[1]
+    price_id = next_phase["items"][0]["price"]
+    try:
+        pending_plan = SubscriptionPlan.objects.get(stripe_price_id=price_id)
+    except SubscriptionPlan.DoesNotExist:
+        return None
+
+    return {
+        "plan": pending_plan,
+        "effective_date": datetime.fromtimestamp(
+            next_phase["start_date"], tz=timezone.utc
+        ),
+    }

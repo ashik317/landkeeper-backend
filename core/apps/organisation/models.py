@@ -125,7 +125,15 @@ class OrganisationSubscription(CreatedAtUpdatedAtBaseModel):
     # Auto-renewal
     auto_renew = models.BooleanField(default=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
-
+    pending_plan = models.ForeignKey(
+        SubscriptionPlan,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pending_subscriptions",
+    )
+    pending_plan_effective_date = models.DateTimeField(null=True, blank=True)
+    stripe_schedule_id = models.CharField(max_length=255, blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
 
     def __str__(self):
