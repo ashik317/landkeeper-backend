@@ -3,7 +3,6 @@ import calendar
 from datetime import date
 
 from django.db import transaction
-from django.db.models import Sum
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -15,7 +14,6 @@ from apps.tenant.enums import (
 )
 from apps.tenant.models import (
     PaymentMethod,
-    RentPayment,
     CardPayment,
     MaintenanceRequest,
     MaintenanceRequestComment,
@@ -60,95 +58,6 @@ class PaymentMethodSerializer(serializers.ModelSerializer):
         ]
 
 
-class RentPaymentSerializer(serializers.ModelSerializer):
-    payment_method = PaymentMethodSerializer(read_only=True)
-
-    class Meta:
-        model = RentPayment
-        fields = [
-            "alias",
-            "tenant",
-            "property",
-            "organisation",
-            "payment_method",
-            "reference",
-            "amount",
-            "due_date",
-            "paid_date",
-            "status",
-            "provider_payment_id",
-            "receipt_file",
-            "failure_reason",
-            "created_at",
-            "updated_at",
-        ]
-        read_only_fields = [
-            "alias",
-            "tenant",
-            "property",
-            "organisation",
-            "reference",
-            "paid_date",
-            "status",
-            "provider_payment_id",
-            "receipt_file",
-            "failure_reason",
-            "created_at",
-            "updated_at",
-        ]
-
-
-class LandlordRentPaymentCreateSerializer(serializers.ModelSerializer):
-    tenant = serializers.SlugRelatedField(
-        slug_field="alias",
-        queryset=Tenant.objects.all(),
-        error_messages={
-            "does_not_exist": "No tenant found with this identifier.",
-            "invalid": "Invalid tenant identifier format.",
-        },
-    )
-
-    class Meta:
-        model = RentPayment
-        fields = ["alias", "tenant", "amount", "due_date"]
-        read_only_fields = ["alias"]
-
-    def validate_tenant(self, tenant):
-        request = self.context["request"]
-
-        landlord_org_ids = list(
-            request.user.organisation_users.values_list("organisation_id", flat=True)
-        )
-
-        if tenant.property.organisation_id not in landlord_org_ids:
-            raise serializers.ValidationError("Not found.")
-
-        return tenant
-
-    def validate(self, attrs):
-        tenant = attrs["tenant"]
-        due_date = attrs["due_date"]
-
-        exists = (
-            RentPayment.objects.filter(tenant=tenant, due_date=due_date)
-            .exclude(status=RentPaymentStatusChoices.FAILED)
-            .exists()
-        )
-
-        if exists:
-            raise serializers.ValidationError(
-                {
-                    "due_date": "A rent payment for this tenant and due date already exists."
-                }
-            )
-        return attrs
-
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-        data["tenant"] = TenantSlimSerializer(instance.tenant).data
-        return data
-
-
 class RentBalanceSummarySerializer(serializers.Serializer):
     current_rent_amount = serializers.SerializerMethodField()
     outstanding_balance = serializers.SerializerMethodField()
@@ -157,90 +66,51 @@ class RentBalanceSummarySerializer(serializers.Serializer):
     def get_current_rent_amount(self, tenant):
         return tenant.rent_amount or 0
 
-    def get_outstanding_balance(self, tenant):
-        rent_total = (
-                RentPayment.objects.filter(tenant=tenant)
-                .exclude(
-                    status__in=[
-                        RentPaymentStatusChoices.CLEARED,
-                        RentPaymentStatusChoices.REFUNDED,
-                        RentPaymentStatusChoices.FAILED,
-                    ]
-                )
-                .aggregate(total=Sum("amount"))["total"]
-                or 0
-        )
-
-        existing_due_dates = set(
-            RentPayment.objects.filter(tenant=tenant).values_list("due_date", flat=True)
-        )
-
-        orphan_card_total = (
-                CardPayment.objects.filter(tenant=tenant)
-                .exclude(due_date__in=existing_due_dates)
-                .exclude(
-                    status__in=[
-                        RentPaymentStatusChoices.CLEARED,
-                        RentPaymentStatusChoices.REFUNDED,
-                        RentPaymentStatusChoices.FAILED,
-                    ]
-                )
-                .aggregate(total=Sum("amount"))["total"]
-                or 0
-        )
-
-        return rent_total + orphan_card_total
-
-    def get_next_due_date(self, tenant):
+    def _get_current_period_payment(self, tenant):
         today = timezone.localdate()
+        month_start = today.replace(day=1)
 
-        # Tenancy already ended — no next due date.
-        if tenant.tenancy_end_date and tenant.tenancy_end_date < today:
-            return None
-
-        next_payment = (
-            RentPayment.objects.filter(tenant=tenant, due_date__gte=today)
-            .exclude(status=RentPaymentStatusChoices.CLEARED)
-            .order_by("due_date")
+        return (
+            CardPayment.objects.filter(
+                tenant=tenant,
+                status=RentPaymentStatusChoices.CLEARED,
+                due_date__gte=month_start,
+            )
+            .order_by("-due_date")
             .first()
         )
-        if next_payment:
-            return next_payment.due_date
 
-        last_payment = (
-            RentPayment.objects.filter(tenant=tenant).order_by("-due_date").first()
-        )
+    def get_outstanding_balance(self, tenant):
+        current_payment = self._get_current_period_payment(tenant)
 
-        if last_payment:
-            rent_day = last_payment.due_date.day
-            year, month = last_payment.due_date.year, last_payment.due_date.month
-        elif tenant.tenancy_start_date:
-            rent_day = tenant.tenancy_start_date.day
-            year, month = today.year, today.month
-        else:
-            return None
+        if current_payment:
+            return 0
 
-        next_date = date(
-            year, month, min(rent_day, calendar.monthrange(year, month)[1])
-        )
-        while next_date <= today:
+        return tenant.rent_amount or 0
+
+    def get_next_due_date(self, tenant):
+        current_payment = self._get_current_period_payment(tenant)
+
+        if current_payment:
+            paid_date = current_payment.due_date
+            year, month = paid_date.year, paid_date.month
+            day = paid_date.day
+
             month += 1
             if month > 12:
                 month = 1
                 year += 1
+
             last_day = calendar.monthrange(year, month)[1]
-            next_date = date(year, month, min(rent_day, last_day))
+            return date(year, month, min(day, last_day))
 
-        if tenant.tenancy_end_date and next_date > tenant.tenancy_end_date:
-            return None
-
-        return next_date
+        return timezone.localdate()
 
 
 class CardPaymentRequestSerializer(serializers.Serializer):
     due_date = serializers.DateField()
     amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0.01)
-    payment_method_id = serializers.CharField(required=False, allow_blank=True)
+    payment_method_id = serializers.CharField()
 
 
 class CardPaymentSerializer(serializers.ModelSerializer):

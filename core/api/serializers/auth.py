@@ -283,12 +283,20 @@ class TenantProfileSerializer(serializers.ModelSerializer):
             "role",
             "phone",
             "avatar",
+            "rent_amount",
             "is_active",
             "is_password_available",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["email", "role", "is_active", "created_at", "updated_at"]
+        read_only_fields = [
+            "email",
+            "role",
+            "is_active",
+            "created_at",
+            "updated_at",
+            "rent_amount",
+        ]
 
     def get_role(self, obj):
         return "TENANT"

@@ -28,9 +28,7 @@ def get_oauth_authorize_url(organisation, user):
         "client_id": settings.STRIPE_CONNECT_CLIENT_ID,
         "scope": "read_write",
         "state": state_token,
-        "redirect_uri": (
-            f"{settings.FRONTEND_URL}/client/profile-settings"
-        ),
+        "redirect_uri": settings.STRIPE_CONNECT_REDIRECT_URI,
     }
 
     return (
