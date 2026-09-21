@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.db.models import Count, Sum
 from django.utils import timezone
 
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.generics import RetrieveAPIView
 
 from apps.organisation.models import OrganisationSubscription
@@ -24,7 +25,7 @@ from apps.property.enums import (
 )
 from apps.supportticket.enums import SupportTicketStatus
 
-from common.permission import IsLandlord
+from common.permission import IsLandlord, IsAdmin
 
 from ..serializers.dashboard import (
     LandlordDashboardSummarySerializer,
@@ -35,7 +36,7 @@ from ..serializers.dashboard import (
 
 class LandlordDashboardSummaryView(RetrieveAPIView):
     serializer_class = LandlordDashboardSummarySerializer
-    permission_classes = [IsLandlord]
+    permission_classes = [IsAuthenticated]
 
     def get_object(self):
         organisation = self.request.user.get_organisation()
@@ -220,9 +221,7 @@ class LandlordDashboardSummaryView(RetrieveAPIView):
 
 class LandlordPropertyTypeDashboardView(RetrieveAPIView):
     serializer_class = LandLordPropertyTypeDashboardSerializer
-    permission_classes = [
-        IsLandlord,
-    ]
+    permission_classes = [IsAuthenticated]
 
     def get_object(self):
         organisation = self.request.user.get_organisation()
@@ -267,7 +266,7 @@ class LandlordPropertyTypeDashboardView(RetrieveAPIView):
 
 class LandlordComplianceTypeDashboardView(RetrieveAPIView):
     serializer_class = LandlordComplianceTypeDashboardSerializer
-    permission_classes = [IsLandlord]
+    permission_classes = [IsAuthenticated]
 
     def get_object(self):
         organisation = self.request.user.get_organisation()

@@ -12,7 +12,8 @@ from django.conf import settings
 from rest_framework.generics import (
     ListAPIView,
     RetrieveUpdateAPIView,
-    RetrieveUpdateDestroyAPIView, ListCreateAPIView,
+    RetrieveUpdateDestroyAPIView,
+    ListCreateAPIView,
 )
 from rest_framework.views import APIView
 from rest_framework import status, serializers, response
@@ -44,21 +45,31 @@ from apps.subscription.models import SubscriptionPlan, PaymentCard, PaymentTrans
 from apps.organisation.models import OrganisationSubscription
 from apps.property.models import Property
 from common.permission import IsLandlord
+
 logger = logging.getLogger(__name__)
+
 
 def _release_pending_schedule(current_subscription):
     stripe_sub = stripe.Subscription.retrieve(
         current_subscription.stripe_subscription_id
     )
-    schedule_id = stripe_sub.get("schedule")
 
-    if schedule_id:
-        stripe.SubscriptionSchedule.release(schedule_id)
+    schedule_id = getattr(stripe_sub, "schedule", None)
+
+    if not schedule_id:
         logger.info(
-            "Released pending schedule %s for subscription %s before upgrade",
-            schedule_id,
+            "No pending subscription schedule found for subscription %s",
             current_subscription.stripe_subscription_id,
         )
+        return
+
+    stripe.SubscriptionSchedule.release(schedule_id)
+
+    logger.info(
+        "Released pending schedule %s for subscription %s before upgrade",
+        schedule_id,
+        current_subscription.stripe_subscription_id,
+    )
 
 
 class SelectSubscriptionView(APIView):
@@ -485,7 +496,6 @@ class LandlordSubscriptionAPIView(RetrieveUpdateAPIView):
 
         return Response(data)
 
-
     def perform_update(self, serializer):
         with transaction.atomic():
             subscription = self.get_object()
@@ -495,7 +505,10 @@ class LandlordSubscriptionAPIView(RetrieveUpdateAPIView):
                 subscription.auto_renew,
             )
 
-            if subscription.stripe_subscription_id and auto_renew != subscription.auto_renew:
+            if (
+                subscription.stripe_subscription_id
+                and auto_renew != subscription.auto_renew
+            ):
                 try:
                     stripe.Subscription.modify(
                         subscription.stripe_subscription_id,
@@ -503,7 +516,9 @@ class LandlordSubscriptionAPIView(RetrieveUpdateAPIView):
                     )
                 except stripe.error.StripeError as e:
                     raise serializers.ValidationError(
-                        {"detail": f"Could not update auto-renew with payment provider: {e}"}
+                        {
+                            "detail": f"Could not update auto-renew with payment provider: {e}"
+                        }
                     )
 
             subscription.auto_renew = auto_renew
@@ -550,6 +565,7 @@ class SubscriptionPermissionView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
 
 class LandlordPaymentCardCreateAPIView(ListCreateAPIView):
     permission_classes = [IsLandlord]
