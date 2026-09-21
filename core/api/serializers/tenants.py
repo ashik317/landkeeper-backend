@@ -108,9 +108,7 @@ class RentBalanceSummarySerializer(serializers.Serializer):
 
 
 class CardPaymentRequestSerializer(serializers.Serializer):
-    due_date = serializers.DateField()
     amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0.01)
-    payment_method_id = serializers.CharField()
 
 
 class CardPaymentSerializer(serializers.ModelSerializer):

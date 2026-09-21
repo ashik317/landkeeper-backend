@@ -113,12 +113,24 @@ class CardPaymentView(APIView):
         )
         serializer.is_valid(raise_exception=True)
 
-        due_date = serializer.validated_data["due_date"]
         amount = serializer.validated_data["amount"]
-        payment_method_id = serializer.validated_data["payment_method_id"]
 
         tenant = request.user
         organisation = tenant.property.organisation
+
+        default_payment_method = PaymentMethod.objects.filter(
+            tenant=tenant,
+            provider=PaymentProviderChoices.STRIPE,
+            is_default=True,
+        ).first()
+
+        if not default_payment_method:
+            return Response(
+                {"error": "No saved card found. Please add a payment method first."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        payment_method_id = default_payment_method.provider_payment_method_id
 
         if not organisation.stripe_charges_enabled:
             if organisation.stripe_account_id:
@@ -199,10 +211,6 @@ class CardPaymentView(APIView):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        payment_method_obj = self._get_or_create_card_payment_method(
-            tenant=request.user, payment_method_id=payment_method_id
-        )
-
         CardPayment.objects.create(
             alias=alias,
             tenant=request.user,
@@ -210,7 +218,7 @@ class CardPaymentView(APIView):
             due_date=due_date,
             amount=amount,
             provider_payment_id=intent.id,
-            payment_method=payment_method_obj,
+            payment_method=default_payment_method,
             status=RentPaymentStatusChoices.PROCESSING,
         )
 
@@ -220,41 +228,16 @@ class CardPaymentView(APIView):
         )
 
     @staticmethod
-    def _get_or_create_card_payment_method(tenant, payment_method_id):
-        if not payment_method_id:
-            return None
+    def _calculate_current_due_date(tenant):
+        import calendar
+        from datetime import date
+        from django.utils import timezone
 
-        existing = PaymentMethod.objects.filter(
-            tenant=tenant,
-            provider=PaymentProviderChoices.STRIPE,
-            provider_payment_method_id=payment_method_id,
-        ).first()
-        if existing:
-            return existing
-
-        try:
-            stripe_pm = stripe.PaymentMethod.retrieve(payment_method_id)
-        except stripe.error.StripeError:
-            logger.exception(
-                "Failed to fetch Stripe PaymentMethod details",
-                extra={"payment_method_id": payment_method_id},
-            )
-            return None
-
-        card = getattr(stripe_pm, "card", None)
-
-        return PaymentMethod.objects.create(
-            tenant=tenant,
-            provider=PaymentProviderChoices.STRIPE,
-            method_type=PaymentMethodTypeChoices.CARD,
-            provider_payment_method_id=payment_method_id,
-            status=PaymentMethodStatusChoices.ACTIVE,
-            is_default=False,
-            card_last4=getattr(card, "last4", None) if card else None,
-            card_brand=getattr(card, "brand", None) if card else None,
-            card_exp_month=getattr(card, "exp_month", None) if card else None,
-            card_exp_year=getattr(card, "exp_year", None) if card else None,
-        )
+        today = timezone.localdate()
+        rent_day = (tenant.tenancy_start_date or today).day
+        year, month = today.year, today.month
+        last_day = calendar.monthrange(year, month)[1]
+        return date(year, month, min(rent_day, last_day))
 
 
 class RentBalanceSummaryView(APIView):
