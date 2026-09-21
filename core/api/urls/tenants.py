@@ -1,13 +1,8 @@
 from django.urls import path
 
 from api.views.tenants import (
-    PaymentMethodListCreateView,
-    PaymentMethodDetailView,
-    RentPaymentListCreateView,
-    RentPaymentDetailView,
     RentBalanceSummaryView,
     RentStatementView,
-    FinancialOverviewListView,
     PropertyTenancyListView,
     PaymentHistoryView,
     MaintenanceRequestListCreateAPIView,
@@ -16,28 +11,20 @@ from api.views.tenants import (
     MaintenanceRequestCommentRetrieveUpdateDestroyView,
     TenantSharedComplianceListView,
     TenantListAPiView,
+    CardPaymentView,
+    TenantStripeConnectWebhookView,
 )
 
 urlpatterns = [
     path(
-        "/payment-methods",
-        PaymentMethodListCreateView.as_view(),
-        name="payment-method-list",
+        "/card-payments",
+        CardPaymentView.as_view(),
+        name="card-payment-create",
     ),
     path(
-        "/payment-methods/<uuid:alias>",
-        PaymentMethodDetailView.as_view(),
-        name="payment-method-detail",
-    ),
-    path(
-        "/rent-payments",
-        RentPaymentListCreateView.as_view(),
-        name="rent-payment-list",
-    ),
-    path(
-        "/rent-payments/<uuid:alias>",
-        RentPaymentDetailView.as_view(),
-        name="rent-payment-detail",
+        "/payment-history",
+        PaymentHistoryView.as_view(),
+        name="payment-history",
     ),
     path(
         "/rent-payments/balance-summary",
@@ -50,19 +37,14 @@ urlpatterns = [
         name="statement-full-year",
     ),
     path(
-        "/rent-payments/payment-history",
-        PaymentHistoryView.as_view(),
-        name="payment-history",
+    "/stripe-connect-webhook",
+        TenantStripeConnectWebhookView.as_view(),
+        name="tenant-stripe-connect-webhook",
     ),
     path(
         "/property-and-tenancy-details",
         PropertyTenancyListView.as_view(),
         name="property-details",
-    ),
-    path(
-        "/financial-overview",
-        FinancialOverviewListView.as_view(),
-        name="financial-overview",
     ),
     path(
         "/maintenance-requests",

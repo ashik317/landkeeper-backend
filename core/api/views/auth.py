@@ -119,7 +119,7 @@ def get_tokens_for_tenant(tenant):
     refresh[api_settings.USER_ID_CLAIM] = user_id
 
     refresh["user_type"] = "tenant"
-    refresh["organisation_id"] = tenant.organisation_id
+    refresh["organisation_id"] = tenant.property.organisation_id
     return refresh
 
 

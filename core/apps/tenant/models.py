@@ -1,4 +1,3 @@
-import uuid
 from django.db import models
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
@@ -12,7 +11,6 @@ from apps.tenant.enums import (
     MaintenanceCategory,
     MaintenanceStatus
 )
-from apps.tenant.utils import receipt_upload_path
 from common.models import CreatedAtUpdatedAtBaseModel, DocumentFile
 
 
@@ -29,7 +27,7 @@ class PaymentMethod(CreatedAtUpdatedAtBaseModel):
     provider_payment_method_id = models.CharField(max_length=128, blank=True, null=True)
     status = models.CharField(max_length=20, choices=PaymentMethodStatusChoices.choices,
                               default=PaymentMethodStatusChoices.PENDING)
-    is_default = models.BooleanField(default=True)
+    is_default = models.BooleanField(default=False)
     card_last4 = models.CharField(max_length=4, blank=True, null=True)
     card_brand = models.CharField(max_length=32, blank=True, null=True)
     card_exp_month = models.PositiveSmallIntegerField(blank=True, null=True)
@@ -48,7 +46,17 @@ class PaymentMethod(CreatedAtUpdatedAtBaseModel):
                         | models.Q(tenant__isnull=True, organisation__isnull=False)
                 ),
                 name="payment_method_exactly_one_owner",
-            )
+            ),
+            models.UniqueConstraint(
+                fields=["tenant"],
+                condition=models.Q(is_default=True),
+                name="unique_default_payment_method_per_tenant",
+            ),
+            models.UniqueConstraint(
+                fields=["organisation"],
+                condition=models.Q(is_default=True),
+                name="unique_default_payment_method_per_organisation",
+            ),
         ]
 
     def __str__(self):
@@ -56,57 +64,12 @@ class PaymentMethod(CreatedAtUpdatedAtBaseModel):
         return f"{owner} - {self.get_method_type_display()} ({self.status})"
 
 
-class RentPayment(CreatedAtUpdatedAtBaseModel):
-    tenant = models.ForeignKey(
-        Tenant, on_delete=models.CASCADE, related_name="rent_payments"
-    )
-    property = models.ForeignKey(
-        Property, on_delete=models.CASCADE, related_name="property_rent_payments"
-    )
-    organisation = models.ForeignKey(
-        Organisation, on_delete=models.CASCADE, related_name="organisation_rent_payments"
-    )
-    payment_method = models.ForeignKey(
-        PaymentMethod,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="rent_payments",
-    )
-    reference = models.CharField(max_length=64, unique=True, editable=False, blank=True)
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
-    due_date = models.DateField()
-    paid_date = models.DateField(blank=True, null=True)
-
-    status = models.CharField(
-        max_length=20,
-        choices=RentPaymentStatusChoices.choices,
-        default=RentPaymentStatusChoices.PENDING,
-    )
-    provider_payment_id = models.CharField(max_length=128, blank=True, null=True, db_index=True)
-    receipt_file = models.FileField(
-        upload_to=receipt_upload_path, blank=True, null=True
-    )
-    failure_reason = models.TextField(blank=True, null=True)
-
-    class Meta:
-        ordering = ["-created_at"]
-        indexes = [
-            models.Index(fields=["tenant", "status"]),
-        ]
-
-    def save(self, *args, **kwargs):
-        if not self.reference:
-            self.reference = f"RENT-{self.due_date:%Y%m}-{uuid.uuid4().hex[:6].upper()}"
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"{self.reference} - {self.tenant} - £{self.amount}"
-
-
 class CardPayment(CreatedAtUpdatedAtBaseModel):
     tenant = models.ForeignKey(
         Tenant, on_delete=models.CASCADE, related_name="card_payments"
+    )
+    organisation = models.ForeignKey(
+        Organisation, on_delete=models.CASCADE, related_name="organisation_card_payments"
     )
     payment_method = models.ForeignKey(
         PaymentMethod, on_delete=models.SET_NULL, null=True, blank=True,
@@ -126,6 +89,7 @@ class CardPayment(CreatedAtUpdatedAtBaseModel):
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["tenant", "due_date"]),
+            models.Index(fields=["organisation", "due_date"]),
         ]
 
     def __str__(self):
