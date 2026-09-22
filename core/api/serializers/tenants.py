@@ -58,6 +58,7 @@ class PaymentMethodSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+
 class PaymentHistorySerializer(serializers.ModelSerializer):
     status = serializers.CharField(source="get_status_display")
     card = serializers.SerializerMethodField()
@@ -130,14 +131,11 @@ class RentBalanceSummarySerializer(serializers.Serializer):
         today = timezone.localdate()
         month_start = today.replace(day=1)
 
-        total = (
-            CardPayment.objects.filter(
-                tenant=tenant,
-                status=RentPaymentStatusChoices.CLEARED,
-                due_date__gte=month_start,
-            )
-            .aggregate(total=Sum("amount"))["total"]
-        )
+        total = CardPayment.objects.filter(
+            tenant=tenant,
+            status=RentPaymentStatusChoices.CLEARED,
+            due_date__gte=month_start,
+        ).aggregate(total=Sum("amount"))["total"]
         return total or 0
 
     def get_outstanding_balance(self, tenant):
@@ -145,9 +143,9 @@ class RentBalanceSummarySerializer(serializers.Serializer):
         total_paid = self._get_total_paid_this_month(tenant)
 
         if total_paid == 0:
-            return -rent_amount
+            return rent_amount
 
-        return total_paid - rent_amount
+        return rent_amount - total_paid
 
     def get_next_due_date(self, tenant):
         today = timezone.localdate()
@@ -163,7 +161,6 @@ class RentBalanceSummarySerializer(serializers.Serializer):
             return date(year, month, 1)
 
         return month_start
-
 
 
 class CardPaymentRequestSerializer(serializers.Serializer):
@@ -397,8 +394,12 @@ class LandlordCardPaymentSerializer(serializers.ModelSerializer):
     tenant_id = serializers.IntegerField(source="tenant.id", read_only=True)
     tenant_name = serializers.SerializerMethodField()
     tenant_alias = serializers.UUIDField(source="tenant.alias", read_only=True)
-    property_name = serializers.CharField(source="tenant.property.property_name", read_only=True)
-    property_address = serializers.CharField(source="tenant.property.address", read_only=True)
+    property_name = serializers.CharField(
+        source="tenant.property.property_name", read_only=True
+    )
+    property_address = serializers.CharField(
+        source="tenant.property.address", read_only=True
+    )
     card_last4 = serializers.SerializerMethodField()
     card_brand = serializers.SerializerMethodField()
     invoice_url = serializers.SerializerMethodField()
