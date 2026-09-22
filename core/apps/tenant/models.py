@@ -84,7 +84,6 @@ class CardPayment(CreatedAtUpdatedAtBaseModel):
         default=RentPaymentStatusChoices.PENDING,
     )
     failure_reason = models.TextField(blank=True, null=True)
-    note = models.TextField(blank=True, null=True)
 
     class Meta:
         ordering = ["-created_at"]
