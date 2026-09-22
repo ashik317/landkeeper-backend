@@ -1,5 +1,4 @@
 import logging
-import calendar
 from datetime import date
 
 import stripe
@@ -59,6 +58,65 @@ class PaymentMethodSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
 
+class PaymentHistorySerializer(serializers.ModelSerializer):
+    status = serializers.CharField(source="get_status_display")
+    card = serializers.SerializerMethodField()
+    invoice_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CardPayment
+        fields = [
+            "alias",
+            "amount",
+            "due_date",
+            "status",
+            "failure_reason",
+            "provider_payment_id",
+            "card",
+            "invoice_url",
+            "note",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_card(self, obj):
+        payment_method = obj.payment_method
+
+        if not payment_method:
+            return None
+
+        return {
+            "provider": payment_method.provider,
+            "method_type": payment_method.method_type,
+            "card_last4": payment_method.card_last4,
+            "card_brand": payment_method.card_brand,
+            "card_exp_month": payment_method.card_exp_month,
+            "card_exp_year": payment_method.card_exp_year,
+        }
+
+    def get_invoice_url(self, obj):
+        if not obj.provider_payment_id or obj.get_status_display() != "Cleared":
+            return None
+
+        try:
+            intent = stripe.PaymentIntent.retrieve(
+                obj.provider_payment_id,
+                expand=["latest_charge"],
+            )
+
+            charge = intent.latest_charge
+
+            return charge.receipt_url if charge else None
+
+        except stripe.error.StripeError:
+            logger.exception(
+                "PaymentHistoryView: failed to fetch invoice/receipt URL",
+                extra={
+                    "provider_payment_id": obj.provider_payment_id,
+                },
+            )
+            return None
+
 
 class RentBalanceSummarySerializer(serializers.Serializer):
     current_rent_amount = serializers.SerializerMethodField()
@@ -87,7 +145,7 @@ class RentBalanceSummarySerializer(serializers.Serializer):
         total_paid = self._get_total_paid_this_month(tenant)
 
         if total_paid == 0:
-            return rent_amount
+            return -rent_amount
 
         return total_paid - rent_amount
 
@@ -362,6 +420,7 @@ class LandlordCardPaymentSerializer(serializers.ModelSerializer):
             "card_last4",
             "card_brand",
             "invoice_url",
+            "note",
             "created_at",
             "updated_at",
         ]
