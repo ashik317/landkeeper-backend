@@ -2,7 +2,9 @@ import logging
 import calendar
 from datetime import date
 
+import stripe
 from django.db import transaction
+from django.db.models import Sum
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -66,50 +68,50 @@ class RentBalanceSummarySerializer(serializers.Serializer):
     def get_current_rent_amount(self, tenant):
         return tenant.rent_amount or 0
 
-    def _get_current_period_payment(self, tenant):
+    def _get_total_paid_this_month(self, tenant):
         today = timezone.localdate()
         month_start = today.replace(day=1)
 
-        return (
+        total = (
             CardPayment.objects.filter(
                 tenant=tenant,
                 status=RentPaymentStatusChoices.CLEARED,
                 due_date__gte=month_start,
             )
-            .order_by("-due_date")
-            .first()
+            .aggregate(total=Sum("amount"))["total"]
         )
+        return total or 0
 
     def get_outstanding_balance(self, tenant):
-        current_payment = self._get_current_period_payment(tenant)
+        rent_amount = tenant.rent_amount or 0
+        total_paid = self._get_total_paid_this_month(tenant)
 
-        if current_payment:
-            return 0
+        if total_paid == 0:
+            return rent_amount
 
-        return tenant.rent_amount or 0
+        return total_paid - rent_amount
 
     def get_next_due_date(self, tenant):
-        current_payment = self._get_current_period_payment(tenant)
+        today = timezone.localdate()
+        month_start = today.replace(day=1)
+        total_paid = self._get_total_paid_this_month(tenant)
 
-        if current_payment:
-            paid_date = current_payment.due_date
-            year, month = paid_date.year, paid_date.month
-            day = paid_date.day
-
+        if total_paid > 0:
+            year, month = month_start.year, month_start.month
             month += 1
             if month > 12:
                 month = 1
                 year += 1
+            return date(year, month, 1)
 
-            last_day = calendar.monthrange(year, month)[1]
-            return date(year, month, min(day, last_day))
+        return month_start
 
-        return timezone.localdate()
 
 
 class CardPaymentRequestSerializer(serializers.Serializer):
     amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0.01)
     payment_method_id = serializers.CharField(required=False, allow_blank=True)
+    note = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
 
 class CardPaymentSerializer(serializers.ModelSerializer):
@@ -331,3 +333,57 @@ class MaintenanceRequestCommentSerializer(serializers.ModelSerializer):
             new_documents = [DocumentFile.objects.create(file=f) for f in upload_files]
             instance.documents.add(*new_documents)
         return instance
+
+
+class LandlordCardPaymentSerializer(serializers.ModelSerializer):
+    tenant_id = serializers.IntegerField(source="tenant.id", read_only=True)
+    tenant_name = serializers.SerializerMethodField()
+    tenant_alias = serializers.UUIDField(source="tenant.alias", read_only=True)
+    property_name = serializers.CharField(source="tenant.property.property_name", read_only=True)
+    property_address = serializers.CharField(source="tenant.property.address", read_only=True)
+    card_last4 = serializers.SerializerMethodField()
+    card_brand = serializers.SerializerMethodField()
+    invoice_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CardPayment
+        fields = [
+            "alias",
+            "tenant_id",
+            "tenant_name",
+            "tenant_alias",
+            "property_name",
+            "property_address",
+            "amount",
+            "due_date",
+            "status",
+            "failure_reason",
+            "provider_payment_id",
+            "card_last4",
+            "card_brand",
+            "invoice_url",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+    def get_tenant_name(self, obj):
+        return obj.tenant.get_full_name()
+
+    def get_card_last4(self, obj):
+        return obj.payment_method.card_last4 if obj.payment_method else None
+
+    def get_card_brand(self, obj):
+        return obj.payment_method.card_brand if obj.payment_method else None
+
+    def get_invoice_url(self, obj):
+        if not obj.provider_payment_id:
+            return None
+        try:
+            intent = stripe.PaymentIntent.retrieve(
+                obj.provider_payment_id, expand=["latest_charge"]
+            )
+            charge = intent.latest_charge
+            return charge.receipt_url if charge else None
+        except stripe.error.StripeError:
+            return None
