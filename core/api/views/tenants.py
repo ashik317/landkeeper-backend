@@ -330,7 +330,9 @@ class RentStatementView(APIView):
         tenant = request.user
 
         card_payments = CardPayment.objects.filter(
-            tenant=tenant, due_date__gte=start, due_date__lte=end
+            tenant=tenant,
+            created_at__date__gte=start,
+            created_at__date__lte=end,
         ).select_related("payment_method")
 
         rows = self._build_rows(card_payments)
@@ -355,7 +357,7 @@ class RentStatementView(APIView):
         for c in card_payments:
             rows.append(
                 {
-                    "date": c.due_date,
+                    "date": c.created_at.date(),
                     "type": cls._payment_type_label(c.payment_method, "Card"),
                     "amount": c.amount,
                     "status": c.get_status_display(),
@@ -514,6 +516,8 @@ class PaymentHistoryView(APIView):
 class TenantStripeConnectWebhookView(View):
 
     def post(self, request, *args, **kwargs):
+        logger.info("TenantStripeConnectWebhookView: request received")
+
         payload = request.body
         signature = request.META.get("HTTP_STRIPE_SIGNATURE")
 
@@ -524,15 +528,20 @@ class TenantStripeConnectWebhookView(View):
                 settings.STRIPE_CONNECT_WEBHOOK_SECRET,
             )
         except ValueError:
+            logger.warning("TenantStripeConnectWebhookView: invalid payload")
             return HttpResponse(status=400)
         except stripe.error.SignatureVerificationError:
+            logger.warning("TenantStripeConnectWebhookView: signature verification failed")
             return HttpResponse(status=400)
 
         event_type = event["type"]
         data = event["data"]["object"]
 
+        logger.info(f"TenantStripeConnectWebhookView: event_type={event_type}")
+
         if event_type == "payment_intent.succeeded":
             handle_tenant_payment_succeeded(data)
+            logger.info(f"TenantStripeConnectWebhookView: handled succeeded for {getattr(data, 'id', None)}")
 
         elif event_type == "payment_intent.payment_failed":
             handle_tenant_payment_failed(data)
