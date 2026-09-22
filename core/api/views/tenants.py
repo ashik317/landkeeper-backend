@@ -228,17 +228,33 @@ class CardPaymentView(APIView):
             )
 
         else:
-            intent = stripe.PaymentIntent.create(
-                amount=int(round(amount * 100)),
-                currency="gbp",
-                metadata={
-                    "tenant_id": str(request.user.id),
-                    "due_date": str(due_date),
-                    "organisation_id": str(organisation.id),
-                },
-                transfer_data={"destination": organisation.stripe_account_id},
-                automatic_payment_methods={"enabled": True, "allow_redirects": "never"},
-            )
+            try:
+                intent = stripe.PaymentIntent.create(
+                    amount=int(round(amount * 100)),
+                    currency="gbp",
+                    metadata={
+                        "tenant_id": str(request.user.id),
+                        "due_date": str(due_date),
+                        "organisation_id": str(organisation.id),
+                    },
+                    transfer_data={"destination": organisation.stripe_account_id},
+                    automatic_payment_methods={"enabled": True, "allow_redirects": "never"},
+                )
+            except stripe.error.StripeError as e:
+                logger.exception(
+                    "CardPaymentView: setup-mode PaymentIntent creation failed",
+                    extra={
+                        "tenant_id": request.user.id,
+                        "organisation_id": organisation.id,
+                        "stripe_error_type": type(e).__name__,
+                    },
+                )
+                return Response(
+                    {
+                        "error": "Your landlord's payment account is not available. Please contact them."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             CardPayment.objects.create(
                 alias=alias,

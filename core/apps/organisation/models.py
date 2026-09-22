@@ -34,7 +34,7 @@ class Organisation(NameSlugDescriptionBaseModel):
     is_active = models.BooleanField(default=True)
     # Stripe
     stripe_customer_id = models.CharField(max_length=255, blank=True, null=True, db_index=True)
-    stripe_account_id = models.CharField(max_length=64, blank=True, null=True, db_index=True)
+    stripe_account_id = models.CharField(max_length=64, blank=True, null=True, db_index=True, unique=True)
     stripe_publishable_key = models.CharField(max_length=128, blank=True, null=True)
     stripe_access_token_encrypted = models.TextField(blank=True, null=True)
     stripe_charges_enabled = models.BooleanField(default=False)
