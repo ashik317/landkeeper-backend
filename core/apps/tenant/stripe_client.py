@@ -61,8 +61,13 @@ def create_payment_intent(
 
 
 def handle_tenant_payment_succeeded(payment_intent):
-    from apps.tenant.models import CardPayment
-    from apps.tenant.enums import RentPaymentStatusChoices
+    from apps.tenant.models import CardPayment, PaymentMethod
+    from apps.tenant.enums import (
+        RentPaymentStatusChoices,
+        PaymentProviderChoices,
+        PaymentMethodTypeChoices,
+        PaymentMethodStatusChoices,
+    )
 
     provider_payment_id = getattr(payment_intent, "id", None)
     if not provider_payment_id:
@@ -78,7 +83,47 @@ def handle_tenant_payment_succeeded(payment_intent):
         return
 
     card_payment.status = RentPaymentStatusChoices.CLEARED
-    card_payment.save(update_fields=["status"])
+    update_fields = ["status"]
+
+    if not card_payment.payment_method_id:
+        pm_id = getattr(payment_intent, "payment_method", None)
+        if pm_id:
+            pm_id_str = pm_id if isinstance(pm_id, str) else getattr(pm_id, "id", None)
+            if pm_id_str:
+                existing_pm = PaymentMethod.objects.filter(
+                    tenant=card_payment.tenant,
+                    provider=PaymentProviderChoices.STRIPE,
+                    provider_payment_method_id=pm_id_str,
+                ).first()
+
+                if existing_pm:
+                    card_payment.payment_method = existing_pm
+                else:
+                    try:
+                        stripe_pm = stripe.PaymentMethod.retrieve(pm_id_str)
+                        card = getattr(stripe_pm, "card", None)
+                        new_pm = PaymentMethod.objects.create(
+                            tenant=card_payment.tenant,
+                            provider=PaymentProviderChoices.STRIPE,
+                            method_type=PaymentMethodTypeChoices.CARD,
+                            provider_payment_method_id=pm_id_str,
+                            status=PaymentMethodStatusChoices.ACTIVE,
+                            is_default=False,
+                            card_last4=getattr(card, "last4", None) if card else None,
+                            card_brand=getattr(card, "brand", None) if card else None,
+                            card_exp_month=getattr(card, "exp_month", None) if card else None,
+                            card_exp_year=getattr(card, "exp_year", None) if card else None,
+                        )
+                        card_payment.payment_method = new_pm
+                    except stripe.error.StripeError:
+                        logger.exception(
+                            "Failed to fetch/create PaymentMethod during webhook backfill",
+                            extra={"payment_method_id": pm_id_str},
+                        )
+
+        update_fields.append("payment_method")
+
+    card_payment.save(update_fields=update_fields)
 
 
 def handle_tenant_payment_failed(payment_intent):
