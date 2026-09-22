@@ -785,7 +785,15 @@ class TenantPaymentsListAPIView(ListAPIView):
     serializer_class = LandlordCardPaymentSerializer
     pagination_class = PageNumberPagination
     filter_backends = [DjangoFilterBackend, SearchFilter]
-    search_fields = ["tenant__first_name", "tenant__last_name", "tenant__email"]
+    filterset_fields = ["status"]
+    search_fields = [
+        "tenant__first_name",
+        "tenant__last_name",
+        "tenant__email",
+        "tenant__property__property_name",
+        "tenant__property__address",
+        "amount",
+    ]
 
     def get_queryset(self):
         organisation = self.request.user.get_organisation()
