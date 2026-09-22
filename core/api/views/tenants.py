@@ -41,6 +41,7 @@ from api.serializers.tenants import (
     MaintenanceRequestSerializer,
     MaintenanceRequestCommentSerializer,
     LandlordCardPaymentSerializer,
+    PaymentHistorySerializer,
 )
 from apps.organisation.stripe_connect import (
     sync_account_status_from_stripe,
@@ -481,76 +482,19 @@ class PropertyTenancyListView(APIView):
 
         return Response(results)
 
-
-class PaymentHistoryView(APIView):
+class PaymentHistoryView(ListAPIView):
     permission_classes = [IsTenant]
+    serializer_class = PaymentHistorySerializer
 
-    def get(self, request):
-        tenant = request.user
+    def get_queryset(self):
+        tenant = self.request.user
 
-        card_payments = CardPayment.objects.filter(tenant=tenant).select_related(
-            "payment_method"
+        return (
+            CardPayment.objects
+            .filter(tenant=tenant)
+            .select_related("payment_method")
+            .order_by("-created_at")
         )
-
-        history = self._build_history(card_payments)
-        history.sort(key=lambda r: r["created_at"], reverse=True)
-
-        paginator = PageNumberPagination()
-        page = paginator.paginate_queryset(history, request, view=self)
-        return paginator.get_paginated_response(page)
-
-    @staticmethod
-    def _card_details(payment_method):
-        if not payment_method:
-            return None
-        return {
-            "provider": payment_method.provider,
-            "method_type": payment_method.method_type,
-            "card_last4": payment_method.card_last4,
-            "card_brand": payment_method.card_brand,
-            "card_exp_month": payment_method.card_exp_month,
-            "card_exp_year": payment_method.card_exp_year,
-        }
-
-    @staticmethod
-    def _invoice_url(provider_payment_id, status_value):
-        if not provider_payment_id or status_value != "Cleared":
-            return None
-
-        try:
-            intent = stripe.PaymentIntent.retrieve(
-                provider_payment_id, expand=["latest_charge"]
-            )
-            charge = intent.latest_charge
-            return charge.receipt_url if charge else None
-        except stripe.error.StripeError:
-            logger.exception(
-                "PaymentHistoryView: failed to fetch invoice/receipt URL",
-                extra={"provider_payment_id": provider_payment_id},
-            )
-            return None
-
-    @classmethod
-    def _build_history(cls, card_payments):
-        rows = []
-        for c in card_payments:
-            status_display = c.get_status_display()
-            rows.append(
-                {
-                    "alias": c.alias,
-                    "source": "card_payment",
-                    "amount": c.amount,
-                    "due_date": c.due_date,
-                    "status": status_display,
-                    "failure_reason": c.failure_reason,
-                    "provider_payment_id": c.provider_payment_id,
-                    "card": cls._card_details(c.payment_method),
-                    "invoice_url": cls._invoice_url(c.provider_payment_id, status_display),
-                    "created_at": c.created_at,
-                    "updated_at": c.updated_at,
-                }
-            )
-        return rows
 
 
 @method_decorator(csrf_exempt, name="dispatch")
