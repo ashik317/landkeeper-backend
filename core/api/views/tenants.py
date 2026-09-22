@@ -114,23 +114,12 @@ class CardPaymentView(APIView):
         serializer.is_valid(raise_exception=True)
 
         amount = serializer.validated_data["amount"]
+        payment_method_id = serializer.validated_data.get("payment_method_id")
 
         tenant = request.user
         organisation = tenant.property.organisation
 
-        default_payment_method = PaymentMethod.objects.filter(
-            tenant=tenant,
-            provider=PaymentProviderChoices.STRIPE,
-            is_default=True,
-        ).first()
-
-        if not default_payment_method:
-            return Response(
-                {"error": "No saved card found. Please add a payment method first."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        payment_method_id = default_payment_method.provider_payment_method_id
+        due_date = self._calculate_current_due_date(tenant)
 
         if not organisation.stripe_charges_enabled:
             if organisation.stripe_account_id:
@@ -152,80 +141,115 @@ class CardPaymentView(APIView):
                 )
 
         alias = uuid.uuid4()
-        try:
-            intent = create_payment_intent(
+
+        if payment_method_id:
+            # Card given directly — charge immediately
+            try:
+                intent = create_payment_intent(
+                    amount=amount,
+                    payment_method_id=payment_method_id,
+                    idempotency_key=f"card-{alias}",
+                    metadata={
+                        "tenant_id": str(request.user.id),
+                        "due_date": str(due_date),
+                        "organisation_id": str(organisation.id),
+                    },
+                    stripe_account_destination=organisation.stripe_account_id,
+                )
+            except stripe.error.CardError as e:
+                logger.warning(
+                    "CardPaymentView: card declined",
+                    extra={
+                        "tenant_id": request.user.id,
+                        "due_date": str(due_date),
+                        "stripe_error_code": e.code,
+                        "stripe_error_message": str(e.user_message or e),
+                    },
+                )
+                CardPayment.objects.create(
+                    alias=alias,
+                    tenant=request.user,
+                    organisation=organisation,
+                    due_date=due_date,
+                    amount=amount,
+                    status=RentPaymentStatusChoices.FAILED,
+                    failure_reason=e.user_message or "Your card was declined.",
+                )
+                return Response(
+                    {"error": e.user_message or "Your card was declined."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            except stripe.error.StripeError as e:
+                logger.exception(
+                    "CardPaymentView: create_payment_intent failed",
+                    extra={
+                        "tenant_id": request.user.id,
+                        "due_date": str(due_date),
+                        "payment_method_id": payment_method_id,
+                        "stripe_error_type": type(e).__name__,
+                    },
+                )
+                CardPayment.objects.create(
+                    alias=alias,
+                    tenant=request.user,
+                    organisation=organisation,
+                    due_date=due_date,
+                    amount=amount,
+                    status=RentPaymentStatusChoices.FAILED,
+                    failure_reason="Payment provider error. Please try again.",
+                )
+                return Response(
+                    {"error": "Payment provider error. Please try again."},
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
+
+            payment_method_obj = self._get_or_create_card_payment_method(
+                tenant=request.user, payment_method_id=payment_method_id
+            )
+
+            CardPayment.objects.create(
+                alias=alias,
+                tenant=request.user,
+                organisation=organisation,
+                due_date=due_date,
                 amount=amount,
-                payment_method_id=payment_method_id,
-                idempotency_key=f"card-{alias}",
+                provider_payment_id=intent.id,
+                payment_method=payment_method_obj,
+                status=RentPaymentStatusChoices.PROCESSING,
+            )
+
+            return Response(
+                {"client_secret": intent.client_secret, "status": intent.status, "mode": "payment"},
+                status=status.HTTP_201_CREATED,
+            )
+
+        else:
+            intent = stripe.PaymentIntent.create(
+                amount=int(round(amount * 100)),
+                currency="gbp",
                 metadata={
                     "tenant_id": str(request.user.id),
                     "due_date": str(due_date),
                     "organisation_id": str(organisation.id),
                 },
-                stripe_account_destination=organisation.stripe_account_id,
+                transfer_data={"destination": organisation.stripe_account_id},
+                automatic_payment_methods={"enabled": True, "allow_redirects": "never"},
             )
-        except stripe.error.CardError as e:
-            logger.warning(
-                "CardPaymentView: card declined",
-                extra={
-                    "tenant_id": request.user.id,
-                    "due_date": str(due_date),
-                    "stripe_error_code": e.code,
-                    "stripe_error_message": str(e.user_message or e),
-                },
-            )
+
             CardPayment.objects.create(
                 alias=alias,
                 tenant=request.user,
                 organisation=organisation,
                 due_date=due_date,
                 amount=amount,
-                status=RentPaymentStatusChoices.FAILED,
-                failure_reason=e.user_message or "Your card was declined.",
-            )
-            return Response(
-                {"error": e.user_message or "Your card was declined."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        except stripe.error.StripeError as e:
-            logger.exception(
-                "CardPaymentView: create_payment_intent failed",
-                extra={
-                    "tenant_id": request.user.id,
-                    "due_date": str(due_date),
-                    "payment_method_id": payment_method_id,
-                    "stripe_error_type": type(e).__name__,
-                },
-            )
-            CardPayment.objects.create(
-                alias=alias,
-                tenant=request.user,
-                organisation=organisation,
-                due_date=due_date,
-                amount=amount,
-                status=RentPaymentStatusChoices.FAILED,
-                failure_reason="Payment provider error. Please try again.",
-            )
-            return Response(
-                {"error": "Payment provider error. Please try again."},
-                status=status.HTTP_502_BAD_GATEWAY,
+                provider_payment_id=intent.id,
+                status=RentPaymentStatusChoices.PROCESSING,
             )
 
-        CardPayment.objects.create(
-            alias=alias,
-            tenant=request.user,
-            organisation=organisation,
-            due_date=due_date,
-            amount=amount,
-            provider_payment_id=intent.id,
-            payment_method=default_payment_method,
-            status=RentPaymentStatusChoices.PROCESSING,
-        )
-
-        return Response(
-            {"client_secret": intent.client_secret, "status": intent.status},
-            status=status.HTTP_201_CREATED,
-        )
+            return Response(
+                {"client_secret": intent.client_secret, "status": intent.status, "mode": "setup"},
+                status=status.HTTP_201_CREATED,
+            )
 
     @staticmethod
     def _calculate_current_due_date(tenant):
@@ -238,6 +262,43 @@ class CardPaymentView(APIView):
         year, month = today.year, today.month
         last_day = calendar.monthrange(year, month)[1]
         return date(year, month, min(rent_day, last_day))
+
+    @staticmethod
+    def _get_or_create_card_payment_method(tenant, payment_method_id):
+        if not payment_method_id:
+            return None
+
+        existing = PaymentMethod.objects.filter(
+            tenant=tenant,
+            provider=PaymentProviderChoices.STRIPE,
+            provider_payment_method_id=payment_method_id,
+        ).first()
+        if existing:
+            return existing
+
+        try:
+            stripe_pm = stripe.PaymentMethod.retrieve(payment_method_id)
+        except stripe.error.StripeError:
+            logger.exception(
+                "Failed to fetch Stripe PaymentMethod details",
+                extra={"payment_method_id": payment_method_id},
+            )
+            return None
+
+        card = getattr(stripe_pm, "card", None)
+
+        return PaymentMethod.objects.create(
+            tenant=tenant,
+            provider=PaymentProviderChoices.STRIPE,
+            method_type=PaymentMethodTypeChoices.CARD,
+            provider_payment_method_id=payment_method_id,
+            status=PaymentMethodStatusChoices.ACTIVE,
+            is_default=False,
+            card_last4=getattr(card, "last4", None) if card else None,
+            card_brand=getattr(card, "brand", None) if card else None,
+            card_exp_month=getattr(card, "exp_month", None) if card else None,
+            card_exp_year=getattr(card, "exp_year", None) if card else None,
+        )
 
 
 class RentBalanceSummaryView(APIView):
@@ -318,7 +379,7 @@ class RentStatementView(APIView):
         elements.append(Spacer(1, 12))
 
         data = [["Date", "Type", "Amount", "Status"]]
-        total = 0
+        total_cleared = 0
         for r in rows:
             data.append(
                 [
@@ -328,9 +389,10 @@ class RentStatementView(APIView):
                     r["status"],
                 ]
             )
-            total += r["amount"]
+            if r["status"] == "Cleared":
+                total_cleared += r["amount"]
 
-        data.append(["", "", f"Total: £{total:,.2f}", ""])
+        data.append(["", "", f"Total Paid: £{total_cleared:,.2f}", ""])
 
         table = Table(data, colWidths=[100, 80, 120, 120])
         table.setStyle(
