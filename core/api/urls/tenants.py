@@ -13,6 +13,7 @@ from api.views.tenants import (
     TenantListAPiView,
     CardPaymentView,
     TenantStripeConnectWebhookView,
+    TenantPaymentsListAPIView,
 )
 
 urlpatterns = [
@@ -71,5 +72,14 @@ urlpatterns = [
         TenantSharedComplianceListView.as_view(),
         name="tenant-shared-compliance-list",
     ),
-    path("/list", TenantListAPiView.as_view(), name="tenant-list"),
+    path(
+        "/list",
+        TenantListAPiView.as_view(),
+        name="tenant-list"
+    ),
+    path(
+        "/payments",
+        TenantPaymentsListAPIView.as_view(),
+        name="tenant-payments-list"
+    ),
 ]
