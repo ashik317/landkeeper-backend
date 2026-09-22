@@ -40,6 +40,7 @@ from api.serializers.tenants import (
     CardPaymentRequestSerializer,
     MaintenanceRequestSerializer,
     MaintenanceRequestCommentSerializer,
+    LandlordCardPaymentSerializer,
 )
 from apps.organisation.stripe_connect import (
     sync_account_status_from_stripe,
@@ -115,6 +116,7 @@ class CardPaymentView(APIView):
 
         amount = serializer.validated_data["amount"]
         payment_method_id = serializer.validated_data.get("payment_method_id")
+        note = serializer.validated_data.get("note")
 
         tenant = request.user
         organisation = tenant.property.organisation
@@ -143,7 +145,6 @@ class CardPaymentView(APIView):
         alias = uuid.uuid4()
 
         if payment_method_id:
-            # Card given directly — charge immediately
             try:
                 intent = create_payment_intent(
                     amount=amount,
@@ -172,6 +173,7 @@ class CardPaymentView(APIView):
                     organisation=organisation,
                     due_date=due_date,
                     amount=amount,
+                    note=note,
                     status=RentPaymentStatusChoices.FAILED,
                     failure_reason=e.user_message or "Your card was declined.",
                 )
@@ -195,6 +197,7 @@ class CardPaymentView(APIView):
                     organisation=organisation,
                     due_date=due_date,
                     amount=amount,
+                    note=note,
                     status=RentPaymentStatusChoices.FAILED,
                     failure_reason="Payment provider error. Please try again.",
                 )
@@ -213,6 +216,7 @@ class CardPaymentView(APIView):
                 organisation=organisation,
                 due_date=due_date,
                 amount=amount,
+                note=note,
                 provider_payment_id=intent.id,
                 payment_method=payment_method_obj,
                 status=RentPaymentStatusChoices.PROCESSING,
@@ -224,17 +228,33 @@ class CardPaymentView(APIView):
             )
 
         else:
-            intent = stripe.PaymentIntent.create(
-                amount=int(round(amount * 100)),
-                currency="gbp",
-                metadata={
-                    "tenant_id": str(request.user.id),
-                    "due_date": str(due_date),
-                    "organisation_id": str(organisation.id),
-                },
-                transfer_data={"destination": organisation.stripe_account_id},
-                automatic_payment_methods={"enabled": True, "allow_redirects": "never"},
-            )
+            try:
+                intent = stripe.PaymentIntent.create(
+                    amount=int(round(amount * 100)),
+                    currency="gbp",
+                    metadata={
+                        "tenant_id": str(request.user.id),
+                        "due_date": str(due_date),
+                        "organisation_id": str(organisation.id),
+                    },
+                    transfer_data={"destination": organisation.stripe_account_id},
+                    automatic_payment_methods={"enabled": True, "allow_redirects": "never"},
+                )
+            except stripe.error.StripeError as e:
+                logger.exception(
+                    "CardPaymentView: setup-mode PaymentIntent creation failed",
+                    extra={
+                        "tenant_id": request.user.id,
+                        "organisation_id": organisation.id,
+                        "stripe_error_type": type(e).__name__,
+                    },
+                )
+                return Response(
+                    {
+                        "error": "Your landlord's payment account is not available. Please contact them."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             CardPayment.objects.create(
                 alias=alias,
@@ -242,6 +262,7 @@ class CardPaymentView(APIView):
                 organisation=organisation,
                 due_date=due_date,
                 amount=amount,
+                note=note,
                 provider_payment_id=intent.id,
                 status=RentPaymentStatusChoices.PROCESSING,
             )
@@ -351,7 +372,7 @@ class RentStatementView(APIView):
 
     @classmethod
     def _build_rows(cls, card_payments):
-        """Build a date-sorted list of row dicts from CardPayment records."""
+        """Build a date-sorted list of row dicts from CardPayment records, newest first."""
         rows = []
 
         for c in card_payments:
@@ -364,7 +385,7 @@ class RentStatementView(APIView):
                 }
             )
 
-        rows.sort(key=lambda r: r["date"])
+        rows.sort(key=lambda r: r["date"], reverse=True)
         return rows
 
     @staticmethod
@@ -491,20 +512,40 @@ class PaymentHistoryView(APIView):
             "card_exp_year": payment_method.card_exp_year,
         }
 
+    @staticmethod
+    def _invoice_url(provider_payment_id, status_value):
+        if not provider_payment_id or status_value != "Cleared":
+            return None
+
+        try:
+            intent = stripe.PaymentIntent.retrieve(
+                provider_payment_id, expand=["latest_charge"]
+            )
+            charge = intent.latest_charge
+            return charge.receipt_url if charge else None
+        except stripe.error.StripeError:
+            logger.exception(
+                "PaymentHistoryView: failed to fetch invoice/receipt URL",
+                extra={"provider_payment_id": provider_payment_id},
+            )
+            return None
+
     @classmethod
     def _build_history(cls, card_payments):
         rows = []
         for c in card_payments:
+            status_display = c.get_status_display()
             rows.append(
                 {
                     "alias": c.alias,
                     "source": "card_payment",
                     "amount": c.amount,
                     "due_date": c.due_date,
-                    "status": c.get_status_display(),
+                    "status": status_display,
                     "failure_reason": c.failure_reason,
                     "provider_payment_id": c.provider_payment_id,
                     "card": cls._card_details(c.payment_method),
+                    "invoice_url": cls._invoice_url(c.provider_payment_id, status_display),
                     "created_at": c.created_at,
                     "updated_at": c.updated_at,
                 }
@@ -794,3 +835,21 @@ class TenantListAPiView(ListAPIView):
             )
 
         return queryset
+
+class TenantPaymentsListAPIView(ListAPIView):
+    permission_classes = [IsLandlord]
+    serializer_class = LandlordCardPaymentSerializer
+    pagination_class = PageNumberPagination
+    filter_backends = [DjangoFilterBackend, SearchFilter]
+    search_fields = ["tenant__first_name", "tenant__last_name", "tenant__email"]
+
+    def get_queryset(self):
+        organisation = self.request.user.get_organisation()
+        if not organisation:
+            raise NotFound("Organisation not found for the user.")
+
+        return (
+            CardPayment.objects.filter(organisation=organisation)
+            .select_related("tenant", "tenant__property", "payment_method")
+            .order_by("-created_at")
+        )
