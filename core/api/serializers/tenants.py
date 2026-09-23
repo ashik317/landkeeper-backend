@@ -394,15 +394,19 @@ class LandlordCardPaymentSerializer(serializers.ModelSerializer):
     tenant_id = serializers.IntegerField(source="tenant.id", read_only=True)
     tenant_name = serializers.SerializerMethodField()
     tenant_alias = serializers.UUIDField(source="tenant.alias", read_only=True)
+
     property_name = serializers.CharField(
-        source="tenant.property.property_name", read_only=True
+        source="tenant.property.property_name",
+        read_only=True,
     )
+
     property_address = serializers.CharField(
-        source="tenant.property.address", read_only=True
+        source="tenant.property.address",
+        read_only=True,
     )
+
     card_last4 = serializers.SerializerMethodField()
     card_brand = serializers.SerializerMethodField()
-    invoice_url = serializers.SerializerMethodField()
 
     class Meta:
         model = CardPayment
@@ -425,6 +429,7 @@ class LandlordCardPaymentSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
         read_only_fields = fields
 
     def get_tenant_name(self, obj):
@@ -435,15 +440,3 @@ class LandlordCardPaymentSerializer(serializers.ModelSerializer):
 
     def get_card_brand(self, obj):
         return obj.payment_method.card_brand if obj.payment_method else None
-
-    def get_invoice_url(self, obj):
-        if not obj.provider_payment_id:
-            return None
-        try:
-            intent = stripe.PaymentIntent.retrieve(
-                obj.provider_payment_id, expand=["latest_charge"]
-            )
-            charge = intent.latest_charge
-            return charge.receipt_url if charge else None
-        except stripe.error.StripeError:
-            return None
