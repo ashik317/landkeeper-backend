@@ -84,6 +84,10 @@ class CardPayment(CreatedAtUpdatedAtBaseModel):
         default=RentPaymentStatusChoices.PENDING,
     )
     failure_reason = models.TextField(blank=True, null=True)
+    invoice_url = models.URLField(
+        blank=True,
+        null=True,
+    )
     note = models.TextField(blank=True, null=True)
 
     class Meta:

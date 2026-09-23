@@ -82,13 +82,41 @@ def handle_tenant_payment_succeeded(payment_intent):
         )
         return
 
-    card_payment.status = RentPaymentStatusChoices.CLEARED
-    update_fields = ["status"]
+    # Get Stripe charge and receipt URL
+    try:
+        payment_intent_full = stripe.PaymentIntent.retrieve(
+            provider_payment_id,
+            expand=["latest_charge"],
+        )
+
+        charge = payment_intent_full.latest_charge
+
+        card_payment.status = RentPaymentStatusChoices.CLEARED
+        update_fields = ["status"]
+
+        if charge:
+            card_payment.invoice_url = charge.receipt_url
+            update_fields.append("invoice_url")
+
+    except stripe.error.StripeError:
+        logger.exception(
+            "Failed to retrieve Stripe charge for invoice URL",
+            extra={"provider_payment_id": provider_payment_id},
+        )
+
+        card_payment.status = RentPaymentStatusChoices.CLEARED
+        update_fields = ["status"]
 
     if not card_payment.payment_method_id:
         pm_id = getattr(payment_intent, "payment_method", None)
+
         if pm_id:
-            pm_id_str = pm_id if isinstance(pm_id, str) else getattr(pm_id, "id", None)
+            pm_id_str = (
+                pm_id
+                if isinstance(pm_id, str)
+                else getattr(pm_id, "id", None)
+            )
+
             if pm_id_str:
                 existing_pm = PaymentMethod.objects.filter(
                     tenant=card_payment.tenant,
@@ -98,10 +126,12 @@ def handle_tenant_payment_succeeded(payment_intent):
 
                 if existing_pm:
                     card_payment.payment_method = existing_pm
+
                 else:
                     try:
                         stripe_pm = stripe.PaymentMethod.retrieve(pm_id_str)
                         card = getattr(stripe_pm, "card", None)
+
                         new_pm = PaymentMethod.objects.create(
                             tenant=card_payment.tenant,
                             provider=PaymentProviderChoices.STRIPE,
@@ -114,14 +144,16 @@ def handle_tenant_payment_succeeded(payment_intent):
                             card_exp_month=getattr(card, "exp_month", None) if card else None,
                             card_exp_year=getattr(card, "exp_year", None) if card else None,
                         )
+
                         card_payment.payment_method = new_pm
+
                     except stripe.error.StripeError:
                         logger.exception(
                             "Failed to fetch/create PaymentMethod during webhook backfill",
                             extra={"payment_method_id": pm_id_str},
                         )
 
-        update_fields.append("payment_method")
+            update_fields.append("payment_method")
 
     card_payment.save(update_fields=update_fields)
 
