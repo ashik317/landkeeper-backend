@@ -62,7 +62,7 @@ class PaymentMethodSerializer(serializers.ModelSerializer):
 class PaymentHistorySerializer(serializers.ModelSerializer):
     status = serializers.CharField(source="get_status_display")
     card = serializers.SerializerMethodField()
-    invoice_url = serializers.SerializerMethodField()
+    invoice_url = serializers.URLField(read_only=True)
 
     class Meta:
         model = CardPayment
@@ -94,29 +94,6 @@ class PaymentHistorySerializer(serializers.ModelSerializer):
             "card_exp_month": payment_method.card_exp_month,
             "card_exp_year": payment_method.card_exp_year,
         }
-
-    def get_invoice_url(self, obj):
-        if not obj.provider_payment_id or obj.get_status_display() != "Cleared":
-            return None
-
-        try:
-            intent = stripe.PaymentIntent.retrieve(
-                obj.provider_payment_id,
-                expand=["latest_charge"],
-            )
-
-            charge = intent.latest_charge
-
-            return charge.receipt_url if charge else None
-
-        except stripe.error.StripeError:
-            logger.exception(
-                "PaymentHistoryView: failed to fetch invoice/receipt URL",
-                extra={
-                    "provider_payment_id": obj.provider_payment_id,
-                },
-            )
-            return None
 
 
 class RentBalanceSummarySerializer(serializers.Serializer):
