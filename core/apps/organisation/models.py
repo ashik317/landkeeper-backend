@@ -123,7 +123,7 @@ class OrganisationSubscription(CreatedAtUpdatedAtBaseModel):
     trial_end_date = models.DateTimeField(null=True, blank=True)
 
     # Auto-renewal
-    auto_renew = models.BooleanField(default=True)
+    auto_renew = models.BooleanField(default=False)
     cancelled_at = models.DateTimeField(null=True, blank=True)
     pending_plan = models.ForeignKey(
         SubscriptionPlan,

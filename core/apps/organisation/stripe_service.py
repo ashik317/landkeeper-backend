@@ -112,7 +112,9 @@ def get_or_create_stripe_price(plan):
         # recurring={
         #     "interval": "month",
         # },
-        recurring={"interval": "day"},
+        recurring={
+            "interval": "day"
+        },
         metadata={
             "plan_id": str(plan.id),
         },

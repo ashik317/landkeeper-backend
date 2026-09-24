@@ -504,54 +504,10 @@ class LandlordSubscriptionAPIView(RetrieveUpdateAPIView):
             subscription.auto_renew,
         )
 
-        if auto_renew == subscription.auto_renew:
-            serializer.save()
-            return
-
-        if not subscription.stripe_subscription_id:
-            raise serializers.ValidationError(
-                {
-                    "auto_renew": (
-                        "Auto-renew cannot be changed because this subscription "
-                        "is not connected to a payment provider subscription."
-                    )
-                }
-            )
-
-        try:
-            stripe_subscription = stripe.Subscription.retrieve(
-                subscription.stripe_subscription_id
-            )
-
-            if stripe_subscription.schedule:
-                stripe.SubscriptionSchedule.modify(
-                    stripe_subscription.schedule,
-                    end_behavior="cancel" if not auto_renew else "release",
-                )
-            else:
-                stripe.Subscription.modify(
-                    subscription.stripe_subscription_id,
-                    cancel_at_period_end=not auto_renew,
-                )
-        except stripe.error.InvalidRequestError:
-            raise serializers.ValidationError(
-                {
-                    "auto_renew": (
-                        "We couldn't update your auto-renew setting right now "
-                        "because your subscription is in the middle of a plan change."
-                    ),
-                    "code": "stripe_invalid_request",
-                }
-            )
-        except stripe.error.StripeError:
-            raise serializers.ValidationError(
-                {
-                    "auto_renew": (
-                        "We couldn't update your auto-renew setting due to a "
-                        "payment provider issue. Please try again shortly."
-                    ),
-                    "code": "stripe_error",
-                }
+        if subscription.stripe_subscription_id:
+            stripe.Subscription.modify(
+                subscription.stripe_subscription_id,
+                cancel_at_period_end=not auto_renew,
             )
 
         serializer.save(auto_renew=auto_renew)
