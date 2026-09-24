@@ -497,32 +497,20 @@ class LandlordSubscriptionAPIView(RetrieveUpdateAPIView):
         return Response(data)
 
     def perform_update(self, serializer):
-        with transaction.atomic():
-            subscription = self.get_object()
+        subscription = self.get_object()
 
-            auto_renew = serializer.validated_data.get(
-                "auto_renew",
-                subscription.auto_renew,
+        auto_renew = serializer.validated_data.get(
+            "auto_renew",
+            subscription.auto_renew,
+        )
+
+        if subscription.stripe_subscription_id:
+            stripe.Subscription.modify(
+                subscription.stripe_subscription_id,
+                cancel_at_period_end=not auto_renew,
             )
 
-            if (
-                subscription.stripe_subscription_id
-                and auto_renew != subscription.auto_renew
-            ):
-                try:
-                    stripe.Subscription.modify(
-                        subscription.stripe_subscription_id,
-                        cancel_at_period_end=not auto_renew,
-                    )
-                except stripe.error.StripeError as e:
-                    raise serializers.ValidationError(
-                        {
-                            "detail": f"Could not update auto-renew with payment provider: {e}"
-                        }
-                    )
-
-            subscription.auto_renew = auto_renew
-            subscription.save(update_fields=["auto_renew"])
+        serializer.save(auto_renew=auto_renew)
 
 
 class SubscriptionPermissionView(APIView):
