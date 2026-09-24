@@ -109,9 +109,10 @@ def get_or_create_stripe_price(plan):
         product=product_id,
         currency="gbp",
         unit_amount=amount,
-        recurring={
-            "interval": "month",
-        },
+        # recurring={
+        #     "interval": "month",
+        # },
+        recurring={"interval": "day"},
         metadata={
             "plan_id": str(plan.id),
         },
