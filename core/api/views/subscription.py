@@ -40,6 +40,7 @@ from apps.organisation.stripe_service import (
     sync_payment_method_to_organisation,
     schedule_plan_downgrade,
     get_pending_downgrade_info,
+    cancel_pending_downgrade,
 )
 from apps.subscription.models import SubscriptionPlan, PaymentCard, PaymentTransaction
 from apps.organisation.models import OrganisationSubscription
@@ -505,10 +506,13 @@ class LandlordSubscriptionAPIView(RetrieveUpdateAPIView):
         )
 
         if subscription.stripe_subscription_id:
-            stripe.Subscription.modify(
-                subscription.stripe_subscription_id,
-                cancel_at_period_end=not auto_renew,
-            )
+            try:
+                stripe.Subscription.modify(
+                    subscription.stripe_subscription_id,
+                    cancel_at_period_end=not auto_renew,
+                )
+            except stripe.error.InvalidRequestError:
+                pass
 
         serializer.save(auto_renew=auto_renew)
 
@@ -608,3 +612,21 @@ class LandlordPaymentCardCreateAPIView(ListCreateAPIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+class CancelPendingDowngradeAPIView(APIView):
+    permission_classes = [IsLandlord]
+
+    def post(self, request):
+        organisation = request.user.get_organisation()
+        if not organisation:
+            return Response(
+                {"error": "Organisation not found for the user."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            result = cancel_pending_downgrade(organisation)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(result, status=status.HTTP_200_OK)

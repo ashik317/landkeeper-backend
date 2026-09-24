@@ -1475,3 +1475,30 @@ def get_pending_downgrade_info(organisation_subscription):
             next_phase["start_date"], tz=timezone.utc
         ),
     }
+
+
+def cancel_pending_downgrade(organisation):
+    organisation_subscription = getattr(organisation, "subscription", None)
+
+    if not organisation_subscription or not organisation_subscription.stripe_schedule_id:
+        raise ValueError("No pending plan change to remove.")
+
+    try:
+        stripe.SubscriptionSchedule.release(
+            organisation_subscription.stripe_schedule_id
+        )
+    except stripe.error.InvalidRequestError as e:
+        raise ValueError(f"Could not remove the pending plan change: {e}")
+
+    organisation_subscription.pending_plan = None
+    organisation_subscription.pending_plan_effective_date = None
+    organisation_subscription.stripe_schedule_id = None
+    organisation_subscription.save(
+        update_fields=[
+            "pending_plan",
+            "pending_plan_effective_date",
+            "stripe_schedule_id",
+        ]
+    )
+
+    return {"detail": "Your scheduled plan change has been removed. You're staying on your current plan."}
