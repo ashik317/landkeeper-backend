@@ -79,12 +79,12 @@ class DashboardMortgagesSerializer(serializers.Serializer):
 class LandlordDashboardSummarySerializer(serializers.Serializer):
     properties = DashboardPropertiesSerializer()
     mortgages = DashboardMortgagesSerializer()
-    tenants = DashboardTenantsSerializer()
-    financial = DashboardFinancialSerializer()
-    compliance = DashboardComplianceSerializer()
-    documents = DashboardDocumentsSerializer()
-    subscription = DashboardSubscriptionSerializer()
-    support = DashboardSupportSerializer()
+    tenants = DashboardTenantsSerializer(required=False)
+    financial = DashboardFinancialSerializer(required=False)
+    compliance = DashboardComplianceSerializer(required=False)
+    documents = DashboardDocumentsSerializer(required=False)
+    subscription = DashboardSubscriptionSerializer(required=False)
+    support = DashboardSupportSerializer(required=False)
 
 
 class PropertyTypeSummarySerializer(serializers.Serializer):

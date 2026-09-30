@@ -5,7 +5,7 @@ from .models import Organisation, OrganisationUser, OrganisationSubscription
 
 @admin.register(Organisation)
 class OrganisationAdmin(admin.ModelAdmin):
-    list_display = ("name", "created_at", "updated_at")
+    list_display = ("slug", "name", "created_at", "updated_at")
 
 
 @admin.register(OrganisationUser)

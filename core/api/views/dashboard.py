@@ -6,7 +6,9 @@ from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.generics import RetrieveAPIView
 
-from apps.organisation.models import OrganisationSubscription
+from apps.authentication.models import Permission
+from apps.organisation.enums import OrganisationRoleChoices
+from apps.organisation.models import OrganisationSubscription, OrganisationUser
 from apps.supportticket.models import SupportTicket
 from apps.property.models import (
     Property,
@@ -25,7 +27,7 @@ from apps.property.enums import (
 )
 from apps.supportticket.enums import SupportTicketStatus
 
-from common.permission import IsLandlord, IsAdmin
+from common.permission import IsLandlord, IsMortgageAdviser
 
 from ..serializers.dashboard import (
     LandlordDashboardSummarySerializer,
@@ -34,12 +36,57 @@ from ..serializers.dashboard import (
 )
 
 
+def has_full_access(user, organisation):
+    """Landlords and admins see everything; other roles only see permitted objects."""
+    return OrganisationUser.objects.filter(
+        user=user,
+        organisation=organisation,
+        role__in=[
+            OrganisationRoleChoices.LANDLORD,
+            OrganisationRoleChoices.ADMIN,
+        ],
+    ).exists()
+
+
+def get_accessible_properties(user, organisation):
+    queryset = Property.objects.filter(organisation=organisation)
+
+    if has_full_access(user, organisation):
+        return queryset
+
+    return queryset.filter(
+        id__in=Permission.objects.filter(
+            user=user,
+            organisation=organisation,
+            property__isnull=False,
+            can_view=True,
+        ).values("property_id")
+    )
+
+
+def get_accessible_mortgages(user, organisation):
+    queryset = Mortgage.objects.filter(organisation=organisation)
+
+    if has_full_access(user, organisation):
+        return queryset
+
+    return queryset.filter(
+        id__in=Permission.objects.filter(
+            user=user,
+            organisation=organisation,
+            mortgage__isnull=False,
+            can_view=True,
+        ).values("mortgage_id")
+    )
+
+
 class LandlordDashboardSummaryView(RetrieveAPIView):
     serializer_class = LandlordDashboardSummarySerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsLandlord | IsMortgageAdviser]
 
     def get_object(self):
-        organisation = self.request.user.get_organisation()
+        user = self.request.user
+        organisation = user.get_organisation()
 
         today = timezone.localdate()
 
@@ -47,13 +94,55 @@ class LandlordDashboardSummaryView(RetrieveAPIView):
         # Properties
         # ---------------------------------------------------------
 
-        properties = Property.objects.filter(organisation=organisation)
+        properties = get_accessible_properties(user, organisation)
         property_total = properties.count()
         property_occupied = properties.filter(status=StatusType.OCCUPIED).count()
         property_vacant = properties.filter(status=StatusType.VACANT).count()
         property_under_maintenance = properties.filter(
             status=StatusType.UNDER_MAINTENANCE
         ).count()
+
+        # ---------------------------------------------------------
+        # Mortgages
+        # ---------------------------------------------------------
+
+        mortgages = get_accessible_mortgages(user, organisation)
+        mortgage_total = mortgages.count()
+        mortgage_outstanding = mortgages.aggregate(total=Sum("outstanding_balance"))[
+            "total"
+        ] or Decimal("0.00")
+        monthly_mortgage_payment = mortgages.aggregate(total=Sum("monthly_payment"))[
+            "total"
+        ] or Decimal("0.00")
+        mortgage_product_type_counts = dict(
+            mortgages.values("interest_rate_type")
+            .annotate(count=Count("id"))
+            .values_list("interest_rate_type", "count")
+        )
+
+        properties_data = {
+            "total": property_total,
+            "occupied": property_occupied,
+            "vacant": property_vacant,
+            "under_maintenance": property_under_maintenance,
+        }
+        mortgages_data = {
+            "total": mortgage_total,
+            "total_outstanding": mortgage_outstanding,
+            "fixed_rate": mortgage_product_type_counts.get(ProductType.FIXED_RATE, 0),
+            "variable_rate": mortgage_product_type_counts.get(
+                ProductType.VARIABLE_RATE, 0
+            ),
+            "tracker": mortgage_product_type_counts.get(ProductType.TRACKER, 0),
+            "offset": mortgage_product_type_counts.get(ProductType.OFFSET, 0),
+        }
+
+        # Mortgage advisers only see property and mortgage data
+        if not has_full_access(user, organisation):
+            return {
+                "properties": properties_data,
+                "mortgages": mortgages_data,
+            }
 
         # ---------------------------------------------------------
         # Tenants
@@ -71,24 +160,6 @@ class LandlordDashboardSummaryView(RetrieveAPIView):
         monthly_rental_income = properties.aggregate(
             total=Sum("monthly_rental_income")
         )["total"] or Decimal("0.00")
-
-        # ---------------------------------------------------------
-        # Mortgages
-        # ---------------------------------------------------------
-
-        mortgages = Mortgage.objects.filter(organisation=organisation)
-        mortgage_total = mortgages.count()
-        mortgage_outstanding = mortgages.aggregate(total=Sum("outstanding_balance"))[
-            "total"
-        ] or Decimal("0.00")
-        monthly_mortgage_payment = mortgages.aggregate(total=Sum("monthly_payment"))[
-            "total"
-        ] or Decimal("0.00")
-        mortgage_product_type_counts = dict(
-            mortgages.values("interest_rate_type")
-            .annotate(count=Count("id"))
-            .values_list("interest_rate_type", "count")
-        )
 
         # ---------------------------------------------------------
         # Finance - current month
@@ -160,32 +231,8 @@ class LandlordDashboardSummaryView(RetrieveAPIView):
         # ---------------------------------------------------------
 
         return {
-            "properties": {
-                "total": property_total,
-                "occupied": property_occupied,
-                "vacant": property_vacant,
-                "under_maintenance": property_under_maintenance,
-            },
-            "mortgages": {
-                "total": mortgage_total,
-                "total_outstanding": mortgage_outstanding,
-                "fixed_rate": mortgage_product_type_counts.get(
-                    ProductType.FIXED_RATE,
-                    0,
-                ),
-                "variable_rate": mortgage_product_type_counts.get(
-                    ProductType.VARIABLE_RATE,
-                    0,
-                ),
-                "tracker": mortgage_product_type_counts.get(
-                    ProductType.TRACKER,
-                    0,
-                ),
-                "offset": mortgage_product_type_counts.get(
-                    ProductType.OFFSET,
-                    0,
-                ),
-            },
+            "properties": properties_data,
+            "mortgages": mortgages_data,
             "tenants": {
                 "total": tenant_total,
                 "active": tenant_active,
@@ -221,13 +268,13 @@ class LandlordDashboardSummaryView(RetrieveAPIView):
 
 class LandlordPropertyTypeDashboardView(RetrieveAPIView):
     serializer_class = LandLordPropertyTypeDashboardSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsLandlord | IsMortgageAdviser]
 
     def get_object(self):
         organisation = self.request.user.get_organisation()
 
         queryset = (
-            Property.objects.filter(organisation=organisation)
+            get_accessible_properties(self.request.user, organisation)
             .values("property_type")
             .annotate(count=Count("id"))
             .order_by("-count")
