@@ -1,4 +1,5 @@
 import stripe
+from stripe.oauth_error import InvalidGrantError
 from django.conf import settings
 from rest_framework import status
 from rest_framework.exceptions import NotFound
@@ -163,6 +164,20 @@ class StripeConnectOAuthCallbackView(APIView):
 
         try:
             oauth_response = exchange_oauth_code(code)
+        except InvalidGrantError as e:
+            logger.warning(
+                "Stripe OAuth invalid grant",
+                extra={"organisation_id": organisation.id, "error": str(e)},
+            )
+            return Response(
+                {
+                    "error": "This Stripe account cannot be connected. "
+                    "It may have been previously disconnected from a platform, "
+                    "or the connection link has expired. Please try again "
+                    "with a different Stripe account."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         except stripe.error.StripeError:
             logger.exception(
                 "Stripe OAuth token exchange failed",
