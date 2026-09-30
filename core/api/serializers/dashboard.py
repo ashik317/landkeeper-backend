@@ -76,7 +76,7 @@ class DashboardMortgagesSerializer(serializers.Serializer):
     offset = serializers.IntegerField()
 
 
-class LandlordDashboardSummarySerializer(serializers.Serializer):
+class DashboardSummarySerializer(serializers.Serializer):
     properties = DashboardPropertiesSerializer()
     mortgages = DashboardMortgagesSerializer()
     tenants = DashboardTenantsSerializer(required=False)
@@ -94,7 +94,7 @@ class PropertyTypeSummarySerializer(serializers.Serializer):
     percentage = serializers.FloatField()
 
 
-class LandLordPropertyTypeDashboardSerializer(serializers.Serializer):
+class PropertyTypeDashboardSerializer(serializers.Serializer):
     total = serializers.IntegerField()
     data = PropertyTypeSummarySerializer(many=True)
 
@@ -106,6 +106,22 @@ class ComplianceTypeSummarySerializer(serializers.Serializer):
     percentage = serializers.FloatField()
 
 
-class LandlordComplianceTypeDashboardSerializer(serializers.Serializer):
+class ComplianceTypeDashboardSerializer(serializers.Serializer):
     total = serializers.IntegerField()
     data = ComplianceTypeSummarySerializer(many=True)
+
+
+class IncomeExpenseMonthSerializer(serializers.Serializer):
+    month = serializers.CharField()
+    label = serializers.CharField()
+    income = serializers.DecimalField(max_digits=20, decimal_places=2)
+    expense = serializers.DecimalField(max_digits=20, decimal_places=2)
+    net = serializers.DecimalField(max_digits=20, decimal_places=2)
+
+
+class DashboardIncomeExpenseDashboardSerializer(serializers.Serializer):
+    months = serializers.IntegerField()
+    total_income = serializers.DecimalField(max_digits=20, decimal_places=2)
+    total_expense = serializers.DecimalField(max_digits=20, decimal_places=2)
+    net = serializers.DecimalField(max_digits=20, decimal_places=2)
+    data = IncomeExpenseMonthSerializer(many=True)

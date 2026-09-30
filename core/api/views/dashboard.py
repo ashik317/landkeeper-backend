@@ -1,8 +1,10 @@
 from decimal import Decimal
 
-from django.db.models import Count, Sum
+from django.db.models import Count, Q, Sum
+from django.db.models.functions import TruncMonth
 from django.utils import timezone
 
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.generics import RetrieveAPIView
 
@@ -27,12 +29,13 @@ from apps.property.enums import (
 )
 from apps.supportticket.enums import SupportTicketStatus
 
-from common.permission import IsLandlord, IsMortgageAdviser
+from common.permission import IsAdmin, IsLandlord, IsMortgageAdviser
 
 from ..serializers.dashboard import (
-    LandlordDashboardSummarySerializer,
-    LandLordPropertyTypeDashboardSerializer,
-    LandlordComplianceTypeDashboardSerializer,
+    DashboardSummarySerializer,
+    PropertyTypeDashboardSerializer,
+    ComplianceTypeDashboardSerializer,
+    DashboardIncomeExpenseDashboardSerializer,
 )
 
 
@@ -80,9 +83,9 @@ def get_accessible_mortgages(user, organisation):
     )
 
 
-class LandlordDashboardSummaryView(RetrieveAPIView):
-    serializer_class = LandlordDashboardSummarySerializer
-    permission_classes = [IsLandlord | IsMortgageAdviser]
+class DashboardSummaryView(RetrieveAPIView):
+    serializer_class = DashboardSummarySerializer
+    permission_classes = [IsLandlord | IsAdmin | IsMortgageAdviser]
 
     def get_object(self):
         user = self.request.user
@@ -266,9 +269,9 @@ class LandlordDashboardSummaryView(RetrieveAPIView):
         }
 
 
-class LandlordPropertyTypeDashboardView(RetrieveAPIView):
-    serializer_class = LandLordPropertyTypeDashboardSerializer
-    permission_classes = [IsLandlord | IsMortgageAdviser]
+class PropertyTypeDashboardView(RetrieveAPIView):
+    serializer_class = PropertyTypeDashboardSerializer
+    permission_classes = [IsLandlord | IsAdmin | IsMortgageAdviser]
 
     def get_object(self):
         organisation = self.request.user.get_organisation()
@@ -311,9 +314,9 @@ class LandlordPropertyTypeDashboardView(RetrieveAPIView):
         }
 
 
-class LandlordComplianceTypeDashboardView(RetrieveAPIView):
-    serializer_class = LandlordComplianceTypeDashboardSerializer
-    permission_classes = [IsAuthenticated]
+class ComplianceTypeDashboardView(RetrieveAPIView):
+    serializer_class = ComplianceTypeDashboardSerializer
+    permission_classes = [IsLandlord | IsAdmin]
 
     def get_object(self):
         organisation = self.request.user.get_organisation()
@@ -356,5 +359,87 @@ class LandlordComplianceTypeDashboardView(RetrieveAPIView):
 
         return {
             "total": total,
+            "data": data,
+        }
+
+
+class DashboardIncomeExpenseDashboardView(RetrieveAPIView):
+    serializer_class = DashboardIncomeExpenseDashboardSerializer
+    permission_classes = [IsLandlord | IsAdmin]
+
+    ALLOWED_MONTHS = [3, 6, 12]
+    DEFAULT_MONTHS = 6
+
+    def get_months(self):
+        months = self.request.query_params.get("months", self.DEFAULT_MONTHS)
+
+        try:
+            months = int(months)
+        except (TypeError, ValueError):
+            months = None
+
+        if months not in self.ALLOWED_MONTHS:
+            raise ValidationError({"months": f"Must be one of {self.ALLOWED_MONTHS}."})
+
+        return months
+
+    def get_object(self):
+        organisation = self.request.user.get_organisation()
+        months = self.get_months()
+
+        # First day of each month in the range, oldest first, ending this month
+        today = timezone.localdate()
+        month_starts = []
+        year, month = today.year, today.month
+        for _ in range(months):
+            month_starts.append(today.replace(year=year, month=month, day=1))
+            month -= 1
+            if month == 0:
+                year, month = year - 1, 12
+        month_starts.reverse()
+
+        queryset = (
+            Finance.objects.filter(
+                organisation=organisation,
+                date__gte=month_starts[0],
+                date__lte=today,
+            )
+            .annotate(month=TruncMonth("date"))
+            .values("month")
+            .annotate(
+                income=Sum("amount", filter=Q(type=TransactionType.INCOME)),
+                expense=Sum("amount", filter=Q(type=TransactionType.EXPENSE)),
+            )
+        )
+
+        totals = {item["month"]: item for item in queryset}
+
+        data = []
+        total_income = Decimal("0.00")
+        total_expense = Decimal("0.00")
+
+        for month_start in month_starts:
+            item = totals.get(month_start, {})
+            income = item.get("income") or Decimal("0.00")
+            expense = item.get("expense") or Decimal("0.00")
+
+            total_income += income
+            total_expense += expense
+
+            data.append(
+                {
+                    "month": month_start.strftime("%Y-%m"),
+                    "label": month_start.strftime("%b"),
+                    "income": income,
+                    "expense": expense,
+                    "net": income - expense,
+                }
+            )
+
+        return {
+            "months": months,
+            "total_income": total_income,
+            "total_expense": total_expense,
+            "net": total_income - total_expense,
             "data": data,
         }

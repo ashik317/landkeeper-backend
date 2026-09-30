@@ -1,25 +1,31 @@
 from django.urls import path
 
 from ..views.dashboard import (
-    LandlordDashboardSummaryView,
-    LandlordPropertyTypeDashboardView,
-    LandlordComplianceTypeDashboardView,
+    DashboardSummaryView,
+    PropertyTypeDashboardView,
+    ComplianceTypeDashboardView,
+    DashboardIncomeExpenseDashboardView,
 )
 
 urlpatterns = [
     path(
         "/summary",
-        LandlordDashboardSummaryView.as_view(),
-        name="landlord-dashboard-summary",
+        DashboardSummaryView.as_view(),
+        name="dashboard-summary",
     ),
     path(
         "/property-types",
-        LandlordPropertyTypeDashboardView.as_view(),
+        PropertyTypeDashboardView.as_view(),
         name="dashboard-property-types",
     ),
     path(
         "/compliance-types",
-        LandlordComplianceTypeDashboardView.as_view(),
+        ComplianceTypeDashboardView.as_view(),
         name="dashboard-compliance-types",
+    ),
+    path(
+        "/income-expense",
+        DashboardIncomeExpenseDashboardView.as_view(),
+        name="dashboard-income-expense",
     ),
 ]
