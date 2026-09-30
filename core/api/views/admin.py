@@ -1,16 +1,16 @@
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 from rest_framework.generics import ListAPIView, RetrieveUpdateDestroyAPIView
-from api.serializers.admin import LandloardProfileSerializer
+from api.serializers.admin import LandloardSerializer
 from apps.organisation.enums import OrganisationRoleChoices
 from common.permission import IsSuperAdmin
 
 User = get_user_model()
 
 
-class LandloardProfileView(ListAPIView):
+class LandloardView(ListAPIView):
     permission_classes = [IsSuperAdmin]
-    serializer_class = LandloardProfileSerializer
+    serializer_class = LandloardSerializer
 
     def get_queryset(self):
         return (
@@ -22,9 +22,9 @@ class LandloardProfileView(ListAPIView):
         )
 
 
-class LandloardProfileDetailView(RetrieveUpdateDestroyAPIView):
+class LandloardDetailView(RetrieveUpdateDestroyAPIView):
     permission_classes = [IsSuperAdmin]
-    serializer_class = LandloardProfileSerializer
+    serializer_class = LandloardSerializer
 
     def get_object(self):
         return get_object_or_404(

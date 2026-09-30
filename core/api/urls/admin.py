@@ -1,16 +1,16 @@
 from django.urls import path
 
-from api.views.admin import LandloardProfileView, LandloardProfileDetailView
+from api.views.admin import LandloardView, LandloardDetailView
 
 urlpatterns = [
     path(
         "/Landloards",
-        LandloardProfileView.as_view(),
-        name="Landloard-Profile-View"
+        LandloardView.as_view(),
+        name="Landloard-View"
     ),
     path(
         "/Landloards/<uuid:landloard_alias>",
-        LandloardProfileDetailView.as_view(),
-        name="Landloard-Profile-Detail-View"
+        LandloardDetailView.as_view(),
+        name="Landloard-Detail-View"
     ),
 ]

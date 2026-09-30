@@ -10,7 +10,7 @@ from apps.organisation.models import OrganisationSubscription
 User = get_user_model()
 
 
-class LandloardProfileSerializer(serializers.ModelSerializer):
+class LandloardSerializer(serializers.ModelSerializer):
     role = serializers.SerializerMethodField()
     is_password_available = serializers.SerializerMethodField()
     has_subscription = serializers.SerializerMethodField()
