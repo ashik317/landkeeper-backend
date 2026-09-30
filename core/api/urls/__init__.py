@@ -13,4 +13,5 @@ urlpatterns = [
     # path("/ambassador", include("api.urls.ambassador")),
     path("/subscription", include("api.urls.subscription")),
     path("/dashboard", include("api.urls.dashboard")),
+    path("/admin", include("api.urls.admin")),
 ]

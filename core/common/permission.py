@@ -34,6 +34,17 @@ class IsAdmin(BasePermission):
         ).exists()
 
 
+class IsSuperAdmin(BasePermission):
+    message = "Only super administrators can perform this action."
+
+    def has_permission(self, request, view):
+        return (
+            request.user
+            and request.user.is_authenticated
+            and request.user.is_superuser
+        )
+
+
 class IsLettingAgent(BasePermission):
     message = "Only letting agents can perform this action."
 

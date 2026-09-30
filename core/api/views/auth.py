@@ -1,7 +1,6 @@
 from datetime import timedelta
 import requests
 from django.utils import timezone
-from django.conf import settings
 from rest_framework.exceptions import ValidationError
 from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 from allauth.socialaccount.providers.oauth2.client import OAuth2Client
