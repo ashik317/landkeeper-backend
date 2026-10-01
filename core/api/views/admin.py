@@ -2,9 +2,16 @@ from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 from rest_framework.filters import SearchFilter
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework.generics import ListAPIView, RetrieveUpdateDestroyAPIView
+from rest_framework.generics import (
+    ListAPIView,
+    RetrieveUpdateDestroyAPIView,
+    ListCreateAPIView
+)
 from api.serializers.admin import LandloardSerializer
+from api.serializers.property import PropertySerializer
 from apps.organisation.enums import OrganisationRoleChoices
+from apps.organisation.models import OrganisationUser
+from apps.property.models import Property
 from common.permission import IsSuperAdmin
 
 User = get_user_model()
@@ -58,3 +65,42 @@ class LandloardDetailView(RetrieveUpdateDestroyAPIView):
 
     def perform_destroy(self, instance):
         instance.delete()
+
+
+class SuperAdminLandlordPropertyView(ListCreateAPIView):
+    serializer_class = PropertySerializer
+    permission_classes = [IsSuperAdmin]
+    filterset_fields = ["property_type", "status"]
+    search_fields = ["property_name", "address"]
+
+    def get_landlord(self):
+        return get_object_or_404(
+            OrganisationUser,
+            user__alias=self.kwargs["landlord_alias"],
+            role=OrganisationRoleChoices.LANDLORD,
+        )
+
+    def get_queryset(self):
+        landlord = self.get_landlord()
+        return Property.objects.filter(organisation=landlord.organisation)
+
+    def perform_create(self, serializer):
+        landlord = self.get_landlord()
+        serializer.save(organisation=landlord.organisation)
+
+
+class SuperAdminLandlordPropertyDetailView(RetrieveUpdateDestroyAPIView):
+    serializer_class = PropertySerializer
+    permission_classes = [IsSuperAdmin]
+
+    def get_object(self):
+        landlord = get_object_or_404(
+            OrganisationUser,
+            user__alias=self.kwargs["landlord_alias"],
+            role=OrganisationRoleChoices.LANDLORD,
+        )
+        return get_object_or_404(
+            Property,
+            alias=self.kwargs["property_alias"],
+            organisation=landlord.organisation,
+        )
