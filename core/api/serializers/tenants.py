@@ -1,7 +1,7 @@
 import logging
 from datetime import date
+from decimal import Decimal
 
-import stripe
 from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
@@ -96,48 +96,75 @@ class PaymentHistorySerializer(serializers.ModelSerializer):
         }
 
 
+def add_months(d, n):
+    total = d.year * 12 + (d.month - 1) + n
+    return date(total // 12, total % 12 + 1, 1)
+
+
+def months_between(start, end):
+    """Number of months from start's month to end's month, inclusive."""
+    return (end.year - start.year) * 12 + (end.month - start.month) + 1
+
+
 class RentBalanceSummarySerializer(serializers.Serializer):
     current_rent_amount = serializers.SerializerMethodField()
+    total_paid = serializers.SerializerMethodField()
     outstanding_balance = serializers.SerializerMethodField()
+    credit_balance = serializers.SerializerMethodField()
     next_due_date = serializers.SerializerMethodField()
 
-    def get_current_rent_amount(self, tenant):
-        return tenant.rent_amount or 0
+    def _summary(self, tenant):
+        # Calculate once per tenant instead of running the query 3 times
+        cache = self.__dict__.setdefault("_summary_cache", {})
+        if tenant.pk in cache:
+            return cache[tenant.pk]
 
-    def _get_total_paid_this_month(self, tenant):
         today = timezone.localdate()
-        month_start = today.replace(day=1)
+        rent = Decimal(tenant.rent_amount or 0)
 
-        total = CardPayment.objects.filter(
+        # ⚠️ Change this to your real lease start field (e.g. move_in_date, created_at.date())
+        start = (tenant.lease_start_date or today).replace(day=1)
+
+        months_billed = max(months_between(start, today), 0)
+        total_charged = rent * months_billed
+
+        total_paid = CardPayment.objects.filter(
             tenant=tenant,
             status=RentPaymentStatusChoices.CLEARED,
-            due_date__gte=month_start,
-        ).aggregate(total=Sum("amount"))["total"]
-        return total or 0
+        ).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+
+        balance = total_charged - total_paid
+
+        if rent > 0:
+            months_covered = int(total_paid // rent)
+            next_due = add_months(start, months_covered)
+        else:
+            next_due = None
+
+        result = {
+            "rent": rent,
+            "total_paid": total_paid,
+            "outstanding": max(balance, Decimal("0")),
+            "credit": max(-balance, Decimal("0")),
+            "next_due": next_due,
+        }
+        cache[tenant.pk] = result
+        return result
+
+    def get_current_rent_amount(self, tenant):
+        return self._summary(tenant)["rent"]
+
+    def get_total_paid(self, tenant):
+        return self._summary(tenant)["total_paid"]
 
     def get_outstanding_balance(self, tenant):
-        rent_amount = tenant.rent_amount or 0
-        total_paid = self._get_total_paid_this_month(tenant)
+        return self._summary(tenant)["outstanding"]
 
-        if total_paid == 0:
-            return rent_amount
-
-        return rent_amount - total_paid
+    def get_credit_balance(self, tenant):
+        return self._summary(tenant)["credit"]
 
     def get_next_due_date(self, tenant):
-        today = timezone.localdate()
-        month_start = today.replace(day=1)
-        total_paid = self._get_total_paid_this_month(tenant)
-
-        if total_paid > 0:
-            year, month = month_start.year, month_start.month
-            month += 1
-            if month > 12:
-                month = 1
-                year += 1
-            return date(year, month, 1)
-
-        return month_start
+        return self._summary(tenant)["next_due"]
 
 
 class CardPaymentRequestSerializer(serializers.Serializer):
