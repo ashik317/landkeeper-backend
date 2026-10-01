@@ -95,17 +95,6 @@ class PaymentHistorySerializer(serializers.ModelSerializer):
             "card_exp_year": payment_method.card_exp_year,
         }
 
-
-def add_months(d, n):
-    total = d.year * 12 + (d.month - 1) + n
-    return date(total // 12, total % 12 + 1, 1)
-
-
-def months_between(start, end):
-    """Number of months from start's month to end's month, inclusive."""
-    return (end.year - start.year) * 12 + (end.month - start.month) + 1
-
-
 class RentBalanceSummarySerializer(serializers.Serializer):
     current_rent_amount = serializers.SerializerMethodField()
     total_paid = serializers.SerializerMethodField()
@@ -113,19 +102,39 @@ class RentBalanceSummarySerializer(serializers.Serializer):
     credit_balance = serializers.SerializerMethodField()
     next_due_date = serializers.SerializerMethodField()
 
+    @staticmethod
+    def _add_months(d, n):
+        """Return the 1st day of the month that is n months after d."""
+        total = d.year * 12 + (d.month - 1) + n
+        return date(total // 12, total % 12 + 1, 1)
+
+    @staticmethod
+    def _months_between(start, end):
+        """Number of months from start's month to end's month, inclusive."""
+        return (end.year - start.year) * 12 + (end.month - start.month) + 1
+
+    @staticmethod
+    def _get_start_month(tenant, today):
+        """Billing starts from the month of the tenant's first payment."""
+        first_due = (
+            CardPayment.objects.filter(tenant=tenant)
+            .order_by("due_date")
+            .values_list("due_date", flat=True)
+            .first()
+        )
+        return (first_due or today).replace(day=1)
+
+
     def _summary(self, tenant):
-        # Calculate once per tenant instead of running the query 3 times
         cache = self.__dict__.setdefault("_summary_cache", {})
         if tenant.pk in cache:
             return cache[tenant.pk]
 
         today = timezone.localdate()
         rent = Decimal(tenant.rent_amount or 0)
+        start = self._get_start_month(tenant, today)
 
-        # ⚠️ Change this to your real lease start field (e.g. move_in_date, created_at.date())
-        start = (tenant.lease_start_date or today).replace(day=1)
-
-        months_billed = max(months_between(start, today), 0)
+        months_billed = max(self._months_between(start, today), 0)
         total_charged = rent * months_billed
 
         total_paid = CardPayment.objects.filter(
@@ -137,7 +146,7 @@ class RentBalanceSummarySerializer(serializers.Serializer):
 
         if rent > 0:
             months_covered = int(total_paid // rent)
-            next_due = add_months(start, months_covered)
+            next_due = self._add_months(start, months_covered)
         else:
             next_due = None
 
@@ -150,6 +159,7 @@ class RentBalanceSummarySerializer(serializers.Serializer):
         }
         cache[tenant.pk] = result
         return result
+
 
     def get_current_rent_amount(self, tenant):
         return self._summary(tenant)["rent"]
