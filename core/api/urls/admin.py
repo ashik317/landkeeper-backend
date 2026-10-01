@@ -4,7 +4,9 @@ from api.views.admin import (
     LandloardView,
     LandloardDetailView,
     SuperAdminLandlordPropertyView,
-    SuperAdminLandlordPropertyDetailView
+    SuperAdminLandlordPropertyDetailView,
+    SuperAdminLandlordMortgageView,
+    SuperAdminLandlordMortgageDetailView
 )
 
 urlpatterns = [
@@ -27,5 +29,15 @@ urlpatterns = [
         "/landloards/<uuid:landlord_alias>/properties/<uuid:property_alias>/",
         SuperAdminLandlordPropertyDetailView.as_view(),
         name="superadmin-landlord-property-detail",
+    ),
+    path(
+    "/landloards/<uuid:landlord_alias>/mortgages",
+        SuperAdminLandlordMortgageView.as_view(),
+        name="superadmin-landlord-mortgages",
+    ),
+    path(
+    "/landloards/<uuid:landlord_alias>/mortgages/<uuid:mortgage_alias>",
+        SuperAdminLandlordMortgageDetailView.as_view(),
+        name="superadmin-landlord-mortgage-detail",
     ),
 ]

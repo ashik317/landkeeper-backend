@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
 from rest_framework.filters import SearchFilter
 from django_filters.rest_framework import DjangoFilterBackend
@@ -8,10 +9,10 @@ from rest_framework.generics import (
     ListCreateAPIView
 )
 from api.serializers.admin import LandloardSerializer
-from api.serializers.property import PropertySerializer
+from api.serializers.property import PropertySerializer, MortgageSerializers
 from apps.organisation.enums import OrganisationRoleChoices
 from apps.organisation.models import OrganisationUser
-from apps.property.models import Property
+from apps.property.models import Property, Mortgage
 from common.permission import IsSuperAdmin
 
 User = get_user_model()
@@ -102,5 +103,49 @@ class SuperAdminLandlordPropertyDetailView(RetrieveUpdateDestroyAPIView):
         return get_object_or_404(
             Property,
             alias=self.kwargs["property_alias"],
+            organisation=landlord.organisation,
+        )
+
+
+class SuperAdminLandlordMortgageView(ListCreateAPIView):
+    serializer_class = MortgageSerializers
+    permission_classes = [IsSuperAdmin]
+    search_fields = ["property__property_name", "lender_name"]
+
+    def get_landlord(self):
+        return get_object_or_404(
+            OrganisationUser,
+            user__alias=self.kwargs["landlord_alias"],
+            role=OrganisationRoleChoices.LANDLORD,
+        )
+
+    def get_queryset(self):
+        landlord = self.get_landlord()
+        return Mortgage.objects.filter(organisation=landlord.organisation)
+
+    def perform_create(self, serializer):
+        landlord = self.get_landlord()
+
+        # The selected property must belong to this landlord
+        property_obj = serializer.validated_data.get("property")
+        if property_obj and property_obj.organisation_id != landlord.organisation_id:
+            raise ValidationError({"property": "This property does not belong to this landlord."})
+
+        serializer.save(organisation=landlord.organisation)
+
+
+class SuperAdminLandlordMortgageDetailView(RetrieveUpdateDestroyAPIView):
+    serializer_class = MortgageSerializers
+    permission_classes = [IsSuperAdmin]
+
+    def get_object(self):
+        landlord = get_object_or_404(
+            OrganisationUser,
+            user__alias=self.kwargs["landlord_alias"],
+            role=OrganisationRoleChoices.LANDLORD,
+        )
+        return get_object_or_404(
+            Mortgage,
+            alias=self.kwargs["mortgage_alias"],
             organisation=landlord.organisation,
         )
