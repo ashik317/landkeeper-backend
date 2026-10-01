@@ -1,5 +1,5 @@
 import logging
-from datetime import date
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 from django.db import transaction
@@ -95,87 +95,35 @@ class PaymentHistorySerializer(serializers.ModelSerializer):
             "card_exp_year": payment_method.card_exp_year,
         }
 
+
 class RentBalanceSummarySerializer(serializers.Serializer):
-    current_rent_amount = serializers.SerializerMethodField()
-    total_paid = serializers.SerializerMethodField()
-    outstanding_balance = serializers.SerializerMethodField()
-    credit_balance = serializers.SerializerMethodField()
-    next_due_date = serializers.SerializerMethodField()
 
-    @staticmethod
-    def _add_months(d, n):
-        """Return the 1st day of the month that is n months after d."""
-        total = d.year * 12 + (d.month - 1) + n
-        return date(total // 12, total % 12 + 1, 1)
-
-    @staticmethod
-    def _months_between(start, end):
-        """Number of months from start's month to end's month, inclusive."""
-        return (end.year - start.year) * 12 + (end.month - start.month) + 1
-
-    @staticmethod
-    def _get_start_month(tenant, today):
-        """Billing starts from the month of the tenant's first payment."""
-        first_due = (
-            CardPayment.objects.filter(tenant=tenant)
-            .order_by("due_date")
-            .values_list("due_date", flat=True)
-            .first()
-        )
-        return (first_due or today).replace(day=1)
-
-
-    def _summary(self, tenant):
-        cache = self.__dict__.setdefault("_summary_cache", {})
-        if tenant.pk in cache:
-            return cache[tenant.pk]
-
+    def to_representation(self, tenant):
         today = timezone.localdate()
+        this_month = today.replace(day=1)
+        next_month = (this_month + timedelta(days=32)).replace(day=1)
+
         rent = Decimal(tenant.rent_amount or 0)
-        start = self._get_start_month(tenant, today)
 
-        months_billed = max(self._months_between(start, today), 0)
-        total_charged = rent * months_billed
-
-        total_paid = CardPayment.objects.filter(
+        payments = CardPayment.objects.filter(
             tenant=tenant,
             status=RentPaymentStatusChoices.CLEARED,
-        ).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+        )
+        total_paid = payments.aggregate(total=Sum("amount"))["total"] or Decimal("0")
 
-        balance = total_charged - total_paid
+        first_due = payments.order_by("due_date").values_list("due_date", flat=True).first()
+        start = first_due or today
+        months_billed = (today.year - start.year) * 12 + (today.month - start.month) + 1
 
-        if rent > 0:
-            months_covered = int(total_paid // rent)
-            next_due = self._add_months(start, months_covered)
-        else:
-            next_due = None
+        balance = rent * months_billed - total_paid
 
-        result = {
-            "rent": rent,
-            "total_paid": total_paid,
-            "outstanding": max(balance, Decimal("0")),
-            "credit": max(-balance, Decimal("0")),
-            "next_due": next_due,
+        next_due = this_month if balance > 0 else next_month
+
+        return {
+            "current_rent_amount": rent,
+            "outstanding_balance": balance,
+            "next_due_date": timezone.make_aware(datetime.combine(next_due, time.min)),
         }
-        cache[tenant.pk] = result
-        return result
-
-
-    def get_current_rent_amount(self, tenant):
-        return self._summary(tenant)["rent"]
-
-    def get_total_paid(self, tenant):
-        return self._summary(tenant)["total_paid"]
-
-    def get_outstanding_balance(self, tenant):
-        return self._summary(tenant)["outstanding"]
-
-    def get_credit_balance(self, tenant):
-        return self._summary(tenant)["credit"]
-
-    def get_next_due_date(self, tenant):
-        return self._summary(tenant)["next_due"]
-
 
 class CardPaymentRequestSerializer(serializers.Serializer):
     amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0.01)

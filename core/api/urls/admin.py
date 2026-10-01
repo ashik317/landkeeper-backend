@@ -4,12 +4,12 @@ from api.views.admin import LandloardView, LandloardDetailView
 
 urlpatterns = [
     path(
-        "/Landloards",
+        "/landloards",
         LandloardView.as_view(),
         name="Landloard-View"
     ),
     path(
-        "/Landloards/<uuid:landloard_alias>",
+        "/landloards/<uuid:landloard_alias>",
         LandloardDetailView.as_view(),
         name="Landloard-Detail-View"
     ),
