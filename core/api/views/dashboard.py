@@ -5,12 +5,12 @@ from django.db.models.functions import TruncMonth
 from django.utils import timezone
 
 from rest_framework.exceptions import ValidationError
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.generics import RetrieveAPIView
 
 from apps.authentication.models import Permission
 from apps.organisation.enums import OrganisationRoleChoices
 from apps.organisation.models import OrganisationSubscription, OrganisationUser
+from apps.property.utils import get_request_organisation
 from apps.supportticket.models import SupportTicket
 from apps.property.models import (
     Property,
@@ -29,7 +29,7 @@ from apps.property.enums import (
 )
 from apps.supportticket.enums import SupportTicketStatus
 
-from common.permission import IsAdmin, IsLandlord, IsMortgageAdviser
+from common.permission import IsAdmin, IsLandlord, IsMortgageAdviser, IsSuperAdmin
 
 from ..serializers.dashboard import (
     DashboardSummarySerializer,
@@ -85,19 +85,21 @@ def get_accessible_mortgages(user, organisation):
 
 class DashboardSummaryView(RetrieveAPIView):
     serializer_class = DashboardSummarySerializer
-    permission_classes = [IsLandlord | IsAdmin | IsMortgageAdviser]
+    permission_classes = [IsSuperAdmin | IsLandlord | IsAdmin | IsMortgageAdviser]
 
     def get_object(self):
         user = self.request.user
-        organisation = user.get_organisation()
+        organisation = get_request_organisation(self.request)
+        is_superadmin = user.is_superuser
 
         today = timezone.localdate()
 
-        # ---------------------------------------------------------
         # Properties
-        # ---------------------------------------------------------
+        if is_superadmin:
+            properties = Property.objects.filter(organisation=organisation)
+        else:
+            properties = get_accessible_properties(user, organisation)
 
-        properties = get_accessible_properties(user, organisation)
         property_total = properties.count()
         property_occupied = properties.filter(status=StatusType.OCCUPIED).count()
         property_vacant = properties.filter(status=StatusType.VACANT).count()
@@ -105,11 +107,12 @@ class DashboardSummaryView(RetrieveAPIView):
             status=StatusType.UNDER_MAINTENANCE
         ).count()
 
-        # ---------------------------------------------------------
         # Mortgages
-        # ---------------------------------------------------------
+        if is_superadmin:
+            mortgages = Mortgage.objects.filter(organisation=organisation)
+        else:
+            mortgages = get_accessible_mortgages(user, organisation)
 
-        mortgages = get_accessible_mortgages(user, organisation)
         mortgage_total = mortgages.count()
         mortgage_outstanding = mortgages.aggregate(total=Sum("outstanding_balance"))[
             "total"
@@ -141,33 +144,24 @@ class DashboardSummaryView(RetrieveAPIView):
         }
 
         # Mortgage advisers only see property and mortgage data
-        if not has_full_access(user, organisation):
+        if not is_superadmin and not has_full_access(user, organisation):
             return {
                 "properties": properties_data,
                 "mortgages": mortgages_data,
             }
 
-        # ---------------------------------------------------------
         # Tenants
-        # ---------------------------------------------------------
-
         tenants = Tenant.objects.filter(organisation=organisation)
         tenant_total = tenants.count()
         tenant_active = tenants.filter(is_active=True).count()
         tenant_inactive = tenants.filter(is_active=False).count()
 
-        # ---------------------------------------------------------
         # Rental income
-        # ---------------------------------------------------------
-
         monthly_rental_income = properties.aggregate(
             total=Sum("monthly_rental_income")
         )["total"] or Decimal("0.00")
 
-        # ---------------------------------------------------------
         # Finance - current month
-        # ---------------------------------------------------------
-
         current_month_finance = Finance.objects.filter(
             organisation=organisation,
             date__year=today.year,
@@ -184,10 +178,7 @@ class DashboardSummaryView(RetrieveAPIView):
 
         current_month_net = current_month_income - current_month_expense
 
-        # ---------------------------------------------------------
         # Compliance
-        # ---------------------------------------------------------
-
         compliance = ComplianceAndCertification.objects.filter(
             organisation=organisation
         )
@@ -199,27 +190,18 @@ class DashboardSummaryView(RetrieveAPIView):
             expiry_date__lte=expiring_soon_date,
         ).count()
 
-        # ---------------------------------------------------------
         # Documents
-        # ---------------------------------------------------------
-
         documents = UploadDocument.objects.filter(organisation=organisation)
         document_total = documents.count()
 
-        # ---------------------------------------------------------
         # Subscription
-        # ---------------------------------------------------------
-
         subscription = (
             OrganisationSubscription.objects.select_related("plan")
             .filter(organisation=organisation)
             .first()
         )
 
-        # ---------------------------------------------------------
         # Support tickets
-        # ---------------------------------------------------------
-
         tickets = SupportTicket.objects.filter(
             organisation=organisation,
             is_deleted=False,
@@ -229,10 +211,7 @@ class DashboardSummaryView(RetrieveAPIView):
             status=SupportTicketStatus.IN_PROGRESS
         ).count()
 
-        # ---------------------------------------------------------
         # Response
-        # ---------------------------------------------------------
-
         return {
             "properties": properties_data,
             "mortgages": mortgages_data,

@@ -42,6 +42,7 @@ from apps.organisation.stripe_service import (
     get_pending_downgrade_info,
     cancel_pending_downgrade,
 )
+from apps.property.utils import get_request_organisation
 from apps.subscription.models import SubscriptionPlan, PaymentCard, PaymentTransaction
 from apps.organisation.models import OrganisationSubscription
 from apps.property.models import Property
@@ -521,13 +522,11 @@ class SubscriptionPermissionView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        organisation = request.user.get_organisation()
+        organisation = get_request_organisation(request)
 
-        if not organisation:
-            return Response(
-                {"detail": "Organisation not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+        current_property_count = Property.objects.filter(
+            organisation=organisation
+        ).count()
 
         subscription = (
             OrganisationSubscription.objects.filter(organisation=organisation)
@@ -535,23 +534,28 @@ class SubscriptionPermissionView(APIView):
             .first()
         )
 
+        max_properties = subscription.plan.max_properties if subscription else None
+
+        # Superadmin no plan limit
+        if request.user.is_superuser:
+            return Response(
+                {
+                    "can_create_property": True,
+                    "property_count": current_property_count,
+                    "max_properties": max_properties,
+                },
+                status=status.HTTP_200_OK,
+            )
+
         if not subscription:
             return Response(
                 {"detail": "No subscription found for this organisation."},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        current_property_count = Property.objects.filter(
-            organisation=organisation
-        ).count()
-
-        max_properties = subscription.plan.max_properties
-
-        can_create_property = current_property_count < max_properties
-
         return Response(
             {
-                "can_create_property": can_create_property,
+                "can_create_property": current_property_count < max_properties,
                 "property_count": current_property_count,
                 "max_properties": max_properties,
             },

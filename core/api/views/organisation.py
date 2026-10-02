@@ -23,7 +23,8 @@ from apps.organisation.stripe_connect import (
     get_oauth_authorize_url,
     exchange_oauth_code,
     save_oauth_result,
-    logger, verify_and_consume_state,
+    logger,
+    verify_and_consume_state,
 )
 
 from common.permission import IsLandlord
@@ -115,7 +116,9 @@ class StripeConnectOAuthStartView(APIView):
                 account = stripe.Account.retrieve(organisation.stripe_account_id)
                 if account.details_submitted and account.charges_enabled:
                     return Response(
-                        {"error": "This organisation is already connected to a Stripe account."},
+                        {
+                            "error": "This organisation is already connected to a Stripe account."
+                        },
                         status=status.HTTP_400_BAD_REQUEST,
                     )
             except stripe.error.StripeError:
@@ -124,7 +127,6 @@ class StripeConnectOAuthStartView(APIView):
 
         authorize_url = get_oauth_authorize_url(organisation, request.user)
         return Response({"authorize_url": authorize_url}, status=status.HTTP_200_OK)
-
 
 
 class StripeConnectOAuthCallbackView(APIView):
@@ -216,6 +218,7 @@ class StripeConnectStatusView(APIView):
                 "details_submitted": organisation.stripe_details_submitted,
             }
         )
+
 
 class StripeConnectDisconnectView(APIView):
     permission_classes = [IsLandlord]
