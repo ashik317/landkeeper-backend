@@ -15,7 +15,7 @@ def get_request_organisation(request):
         organisation = getattr(request, "header_organisation", None)
         if not organisation:
             raise ValidationError(
-                {"organisation": "X-ORGANISATION-ID header is required for super admin."}
+                {"landlord_alias": "X-LANDLORD-ALIAS header is required for super admin."}
             )
         return organisation
 
