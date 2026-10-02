@@ -1,10 +1,13 @@
+import uuid
+
 from django.http import JsonResponse
 
-from apps.organisation.models import Organisation
+from apps.organisation.enums import OrganisationRoleChoices
+from apps.organisation.models import OrganisationUser
 
 
 class OrganisationHeaderMiddleware:
-    HEADER = "X-ORGANISATION-ID"
+    HEADER = "X-LANDLORD-ALIAS"
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -12,15 +15,25 @@ class OrganisationHeaderMiddleware:
     def __call__(self, request):
         request.header_organisation = None
 
-        org_id = request.headers.get(self.HEADER, "").strip()
-        if org_id:
-            if not org_id.isdigit():
-                return JsonResponse({"error": "Invalid organisation id."}, status=400)
+        landlord_alias = request.headers.get(self.HEADER, "").strip()
+        if landlord_alias:
+            try:
+                uuid.UUID(landlord_alias)
+            except ValueError:
+                return JsonResponse({"error": "Invalid landlord alias."}, status=400)
 
-            organisation = Organisation.objects.filter(id=org_id, is_active=True).first()
-            if not organisation:
-                return JsonResponse({"error": "Organisation not found."}, status=404)
+            landlord = (
+                OrganisationUser.objects.select_related("organisation")
+                .filter(
+                    user__alias=landlord_alias,
+                    role=OrganisationRoleChoices.LANDLORD,
+                    organisation__is_active=True,
+                )
+                .first()
+            )
+            if not landlord:
+                return JsonResponse({"error": "Landlord not found."}, status=404)
 
-            request.header_organisation = organisation
+            request.header_organisation = landlord.organisation
 
         return self.get_response(request)
