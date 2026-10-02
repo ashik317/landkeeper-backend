@@ -1,6 +1,9 @@
 from django.urls import path
 
-from api.views.admin import LandloardView, LandloardDetailView
+from api.views.admin import (
+    LandloardView,
+    LandloardDetailView
+)
 
 urlpatterns = [
     path(
