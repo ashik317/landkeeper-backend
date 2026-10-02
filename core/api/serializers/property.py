@@ -152,6 +152,10 @@ class PropertySerializer(serializers.ModelSerializer):
         if not user or not user.is_authenticated:
             return False
 
+        # Superadmin can always edit
+        if user.is_superuser:
+            return True
+
         organisation = user.get_organisation()
 
         if not organisation:
@@ -234,7 +238,8 @@ class PropertySerializer(serializers.ModelSerializer):
 
         if shareholder:
             plain_data["shareholder"] = shareholder
-        elif "shareholder" not in plain_data:
+
+        elif "shareholder" not in plain_data and self.instance is None:
             plain_data["shareholder"] = []
 
         return super().to_internal_value(plain_data)
