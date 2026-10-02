@@ -9,7 +9,6 @@ from rest_framework.exceptions import NotFound
 from rest_framework.generics import (
     ListCreateAPIView,
     RetrieveUpdateDestroyAPIView,
-    ListAPIView,
 )
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.exceptions import ValidationError
@@ -25,7 +24,6 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from apps import tenant
 from apps.organisation.models import OrganisationUser
 from apps.organisation.enums import (
     OrganisationRoleChoices,
@@ -40,6 +38,7 @@ from apps.property.models import (
     Finance,
     ComplianceShare,
 )
+from apps.property.utils import get_request_organisation
 
 from common.permission import (
     IsLandlord,
@@ -47,6 +46,7 @@ from common.permission import (
     IsAdmin,
     CanAccessProperty,
     CanAccessMortgage,
+    IsSuperAdmin,
 )
 
 from api.serializers.property import (
@@ -63,24 +63,24 @@ from api.serializers.property import (
 
 class PropertyListView(ListCreateAPIView):
     serializer_class = PropertySerializer
-    permission_classes = [CanAccessProperty]
+    permission_classes = [CanAccessProperty | IsSuperAdmin]
     filterset_fields = ["property_type", "status"]
     search_fields = ["property_name", "address"]
 
     def get_queryset(self):
-        organisation = self.request.user.get_organisation()
-
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
+        organisation = get_request_organisation(self.request)
 
         queryset = Property.objects.filter(organisation=organisation)
+
+        if self.request.user.is_superuser:
+            return queryset
 
         current_user = OrganisationUser.objects.filter(
             user=self.request.user,
             organisation=organisation,
         ).first()
 
-        if current_user.role in [
+        if current_user and current_user.role in [
             OrganisationRoleChoices.LANDLORD,
             OrganisationRoleChoices.ADMIN,
         ]:
@@ -95,10 +95,11 @@ class PropertyListView(ListCreateAPIView):
             return queryset
 
     def perform_create(self, serializer):
-        organisation = self.request.user.get_organisation()
+        organisation = get_request_organisation(self.request)
 
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
+        if self.request.user.is_superuser:
+            serializer.save(organisation=organisation)
+            return
 
         subscription = getattr(organisation, "subscription", None)
 
@@ -133,7 +134,7 @@ class PropertyListView(ListCreateAPIView):
 
 class PropertyDetailView(RetrieveUpdateDestroyAPIView):
     serializer_class = PropertySerializer
-    permission_classes = [CanAccessProperty]
+    permission_classes = [CanAccessProperty | IsSuperAdmin]
 
     def get_object(self):
         obj = get_object_or_404(
@@ -149,15 +150,16 @@ class PropertyDetailView(RetrieveUpdateDestroyAPIView):
 
 class MortgageListView(ListCreateAPIView):
     serializer_class = MortgageSerializers
-    permission_classes = [CanAccessMortgage]
+    permission_classes = [CanAccessMortgage | IsSuperAdmin]
     search_fields = ["property__property_name", "lender_name"]
 
     def get_queryset(self):
-        organisation = self.request.user.get_organisation()
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
+        organisation = get_request_organisation(self.request)
 
         queryset = Mortgage.objects.filter(organisation=organisation)
+
+        if self.request.user.is_superuser:
+            return queryset
 
         # Mortgage advisers can only see permitted properties
         current_user = OrganisationUser.objects.filter(
@@ -165,7 +167,7 @@ class MortgageListView(ListCreateAPIView):
             organisation=organisation,
         ).first()
 
-        if current_user.role in [
+        if current_user and current_user.role in [
             OrganisationRoleChoices.LANDLORD,
             OrganisationRoleChoices.ADMIN,
         ]:
@@ -180,15 +182,21 @@ class MortgageListView(ListCreateAPIView):
             return queryset
 
     def perform_create(self, serializer):
-        organisation = self.request.user.get_organisation()
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
+        organisation = get_request_organisation(self.request)
+
+        # The selected property must belong to the same organisation
+        property_obj = serializer.validated_data.get("property")
+        if property_obj and property_obj.organisation_id != organisation.id:
+            raise ValidationError(
+                {"property": "This property does not belong to this organisation."}
+            )
+
         serializer.save(organisation=organisation)
 
 
 class MortgageDetailView(RetrieveUpdateDestroyAPIView):
     serializer_class = MortgageSerializers
-    permission_classes = [CanAccessMortgage]
+    permission_classes = [CanAccessMortgage | IsSuperAdmin]
 
     def get_object(self):
         obj = get_object_or_404(Mortgage, alias=self.kwargs["mortgage_alias"])

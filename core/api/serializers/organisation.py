@@ -7,6 +7,7 @@ class OrganisationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Organisation
         fields = [
+            "id",
             "slug",
             "name",
             "description",
