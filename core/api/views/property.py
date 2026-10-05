@@ -209,7 +209,7 @@ class MortgageDetailView(RetrieveUpdateDestroyAPIView):
 
 class TenantListView(ListCreateAPIView):
     serializer_class = TenantSerializer
-    permission_classes = [IsLandlord | IsAdmin]
+    permission_classes = [IsSuperAdmin | IsLandlord | IsAdmin]
     search_fields = [
         "property__property_name",
         "first_name",
@@ -219,58 +219,49 @@ class TenantListView(ListCreateAPIView):
     ]
 
     def get_queryset(self):
-        organisation = self.request.user.get_organisation()
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
+        organisation = get_request_organisation(self.request)
         return Tenant.objects.filter(organisation=organisation).order_by("-created_at")
 
     def perform_create(self, serializer):
-        organisation = self.request.user.get_organisation()
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
+        organisation = get_request_organisation(self.request)
         serializer.save(organisation=organisation, password=make_password(None))
 
 
 class TenantDetailView(RetrieveUpdateDestroyAPIView):
     serializer_class = TenantSerializer
-    permission_classes = [IsLandlord | IsAdmin]
+    permission_classes = [IsSuperAdmin | IsLandlord | IsAdmin]
 
     def get_object(self):
-        organisation = self.request.user.get_organisation()
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
         return get_object_or_404(
-            Tenant, alias=self.kwargs["tenant_alias"], organisation=organisation
+            Tenant,
+            alias=self.kwargs["tenant_alias"]
         )
 
 
 class ComplianceAndCertificationListView(ListCreateAPIView):
     serializer_class = ComplianceAndCertificationSerializers
-    permission_classes = [IsLandlord | IsAdmin]
+    permission_classes = [IsSuperAdmin | IsLandlord | IsAdmin]
     search_fields = ["property__property_name", "certificate_number"]
 
     def get_queryset(self):
-        organisation = self.request.user.get_organisation()
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
+        organisation = get_request_organisation(self.request)
         return ComplianceAndCertification.objects.filter(
             organisation=organisation
         ).order_by("-created_at")
 
     def perform_create(self, serializer):
-        organisation = self.request.user.get_organisation()
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
+        organisation = get_request_organisation(self.request)
         serializer.save(organisation=organisation)
 
 
 class ComplianceAndCertificationDetailView(RetrieveUpdateDestroyAPIView):
     serializer_class = ComplianceAndCertificationSerializers
-    permission_classes = [IsLandlord | IsAdmin]
+    permission_classes = [IsLandlord | IsAdmin | IsSuperAdmin]
 
     def get_object(self):
         return get_object_or_404(
-            ComplianceAndCertification, alias=self.kwargs["compliance_alias"]
+            ComplianceAndCertification,
+            alias=self.kwargs["compliance_alias"]
         )
 
 

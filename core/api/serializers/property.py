@@ -7,6 +7,7 @@ import re
 from rest_framework import serializers
 from apps.authentication.models import InviteUser
 from apps.organisation.enums import OrganisationRoleChoices
+from apps.organisation.utils import get_request_organisation
 from apps.property.enums import PropertyOwnerType
 from apps.property.models import (
     Property,
@@ -430,14 +431,10 @@ class TenantSerializer(serializers.ModelSerializer):
         ]
 
     def validate_email(self, value):
-        request = self.context.get("request")
-        user = getattr(request, "user", None)
-        organisation = (
-            user.get_organisation() if user and user.is_authenticated else None
-        )
-
-        if not organisation:
-            raise serializers.ValidationError("Organisation not found for the user.")
+        if self.instance:
+            organisation = self.instance.organisation
+        else:
+            organisation = get_request_organisation(self.context.get("request"))
 
         tenant_queryset = Tenant.objects.filter(
             organisation=organisation,
@@ -454,8 +451,6 @@ class TenantSerializer(serializers.ModelSerializer):
             or InviteUser.objects.filter(email=value).exists()
         ):
             raise serializers.ValidationError("Email is already in use.")
-
-        return value
 
         return value
 
