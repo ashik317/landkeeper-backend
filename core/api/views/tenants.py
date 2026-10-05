@@ -68,7 +68,7 @@ from apps.notification.tasks import (
 from apps.tenant.stripe_client import create_payment_intent
 from apps.tenant.utils import get_statement_date_range
 from common.models import DocumentFile
-from common.permission import IsTenant, IsLandlord, IsAdmin, IsLettingAgent
+from common.permission import IsTenant, IsLandlord, IsAdmin, IsLettingAgent, IsSuperAdmin
 from api.serializers.property import (
     ComplianceAndCertificationSerializers,
     TenantSerializer,
@@ -781,7 +781,7 @@ class TenantListAPiView(ListAPIView):
         return queryset
 
 class TenantPaymentsListAPIView(ListAPIView):
-    permission_classes = [IsLandlord]
+    permission_classes = [IsLandlord | IsSuperAdmin]
     serializer_class = LandlordCardPaymentSerializer
     pagination_class = PageNumberPagination
     filter_backends = [DjangoFilterBackend, SearchFilter]
@@ -796,12 +796,19 @@ class TenantPaymentsListAPIView(ListAPIView):
     ]
 
     def get_queryset(self):
-        organisation = self.request.user.get_organisation()
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
-
-        return (
-            CardPayment.objects.filter(organisation=organisation)
+        user = self.request.user
+        qs = (
+            CardPayment.objects
             .select_related("tenant", "tenant__property", "payment_method")
             .order_by("-created_at")
         )
+
+        # Superadmin: see all payments
+        if user.is_superuser:
+            return qs
+
+        # Landlord: only their organisation
+        organisation = user.get_organisation()
+        if not organisation:
+            raise NotFound("Organisation not found for the user.")
+        return qs.filter(organisation=organisation)
