@@ -17,6 +17,7 @@ class PropertyOwnerType(models.TextChoices):
     OWNER = "OWNER", _("Owner")
     COMPANY = "COMPANY", _("Company")
 
+
 class StatusType(models.TextChoices):
     OCCUPIED = "OCCUPIED", _("Occupied")
     VACANT = "VACANT", _("Vacant")
@@ -24,16 +25,60 @@ class StatusType(models.TextChoices):
 
 
 class CertificateType(models.TextChoices):
-    GAS_SAFETY_CERTIFICATE = "GAS_SAFETY_CERTIFICATE", _("Gas Safety Certificate")
-    EPC_CERTIFICATE = "EPC_CERTIFICATE", _("EPC Certificate")
-    ELECTRICAL_SAFETY_CERTIFICATE = "ELECTRICAL_SAFETY_CERTIFICATE", _(
-        "Electrical Safety Certificate"
+    GAS_SAFETY_CERTIFICATE = (
+        "GAS_SAFETY_CERTIFICATE",
+        _("Gas Safety Certificate"),
     )
-    FIRE_RISK_ASSESSMENT = "FIRE_RISK_ASSESSMENT", _("Fire Risk Assessment")
-    HMO_LICENCE = "HMO_LICENCE", _("HMO Licence")
-    PAT_TESTING = "PAT_TESTING", _("PAT Testing")
-    LEGIONELLA_ASSESSMENT = "LEGIONELLA_ASSESSMENT", _("Legionella Assessment")
-    INSURANCE_DOCUMENT = "INSURANCE_DOCUMENT", _("Insurance Document")
+
+    EPC_CERTIFICATE = (
+        "EPC_CERTIFICATE",
+        _("Energy Performance Certificate (EPC)"),
+    )
+
+    EICR_CERTIFICATE = (
+        "EICR_CERTIFICATE",
+        _("Electrical Installation Condition Report (EICR)"),
+    )
+
+    DEPOSIT_PROTECTION_CERTIFICATE = (
+        "DEPOSIT_PROTECTION_CERTIFICATE",
+        _("Deposit Protection Certificate"),
+    )
+
+    RIGHT_TO_RENT_CHECK = (
+        "RIGHT_TO_RENT_CHECK",
+        _("Right to Rent Checks"),
+    )
+
+    HMO_LICENCE = (
+        "HMO_LICENCE",
+        _("HMO Licence"),
+    )
+
+    PROPERTY_INSURANCE_CERTIFICATE = (
+        "PROPERTY_INSURANCE_CERTIFICATE",
+        _("Property Insurance Certificate"),
+    )
+
+    FIRE_SAFETY_CERTIFICATE = (
+        "FIRE_SAFETY_CERTIFICATE",
+        _("Fire Safety Certificate / Fire Risk Assessment"),
+    )
+
+    SELECTIVE_LICENCE = (
+        "SELECTIVE_LICENCE",
+        _("Selective Licence"),
+    )
+
+    PAT_TESTING_CERTIFICATE = (
+        "PAT_TESTING_CERTIFICATE",
+        _("Portable Appliance Testing (PAT) Certificate"),
+    )
+
+    PROPERTY_FLOOR_PLANS = (
+        "PROPERTY_FLOOR_PLANS",
+        _("Property Floor Plans"),
+    )
 
 
 class ProductType(models.TextChoices):
@@ -76,6 +121,7 @@ class Category(models.TextChoices):
     MANAGEMENT_FEES = "MANAGEMENT_FEES", _("Management Fees")
     TAX = "TAX", _("Tax")
     OTHER = "OTHER", _("Other")
+
 
 class PropertyTenureType(models.TextChoices):
     FREEHOLD = "FREEHOLD", _("Freehold")
