@@ -6,14 +6,14 @@ from apps.organisation.enums import OrganisationRoleChoices
 from apps.organisation.models import OrganisationUser
 
 
-class OrganisationHeaderMiddleware:
+class OrganisationMiddleware:
     HEADER = "X-LANDLORD-ALIAS"
 
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
-        request.header_organisation = None
+        request.organisation = None
 
         landlord_alias = request.headers.get(self.HEADER, "").strip()
         if landlord_alias:
@@ -34,6 +34,6 @@ class OrganisationHeaderMiddleware:
             if not landlord:
                 return JsonResponse({"error": "Landlord not found."}, status=404)
 
-            request.header_organisation = landlord.organisation
+            request.organisation = landlord.organisation
 
         return self.get_response(request)

@@ -9,6 +9,7 @@ https://docs.djangoproject.com/en/6.0/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
+
 from corsheaders.defaults import default_headers
 from datetime import timedelta
 from pathlib import Path
@@ -84,7 +85,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "allauth.account.middleware.AccountMiddleware",
-    "core.middleware.OrganisationHeaderMiddleware",
+    "common.middleware.OrganisationMiddleware",
 ]
 
 ROOT_URLCONF = "core.urls"

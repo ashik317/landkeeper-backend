@@ -1,5 +1,6 @@
 from rest_framework.exceptions import ValidationError, NotFound
 
+
 def certificate_file_upload_path(instance, filename):
     return f"compliance_certificates/{instance.property.id}/{filename}"
 
@@ -12,10 +13,12 @@ def get_request_organisation(request):
     user = request.user
 
     if user.is_superuser:
-        organisation = getattr(request, "header_organisation", None)
+        organisation = getattr(request, "organisation", None)
         if not organisation:
             raise ValidationError(
-                {"landlord_alias": "X-LANDLORD-ALIAS header is required for super admin."}
+                {
+                    "landlord_alias": "X-LANDLORD-ALIAS header is required for super admin."
+                }
             )
         return organisation
 
