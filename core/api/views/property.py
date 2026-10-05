@@ -209,7 +209,7 @@ class MortgageDetailView(RetrieveUpdateDestroyAPIView):
 
 class TenantListView(ListCreateAPIView):
     serializer_class = TenantSerializer
-    permission_classes = [IsLandlord | IsAdmin]
+    permission_classes = [IsSuperAdmin | IsLandlord | IsAdmin]
     search_fields = [
         "property__property_name",
         "first_name",
@@ -219,26 +219,29 @@ class TenantListView(ListCreateAPIView):
     ]
 
     def get_queryset(self):
-        organisation = self.request.user.get_organisation()
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
+        organisation = get_request_organisation(self.request)
         return Tenant.objects.filter(organisation=organisation).order_by("-created_at")
 
     def perform_create(self, serializer):
-        organisation = self.request.user.get_organisation()
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
+        organisation = get_request_organisation(self.request)
+
+        # The selected property must belong to the same organisation
+        property_obj = serializer.validated_data.get("property")
+        if property_obj and property_obj.organisation_id != organisation.id:
+            raise ValidationError({"property": "This property does not belong to this organisation."})
+
         serializer.save(organisation=organisation, password=make_password(None))
 
 
 class TenantDetailView(RetrieveUpdateDestroyAPIView):
     serializer_class = TenantSerializer
-    permission_classes = [IsLandlord | IsAdmin]
+    permission_classes = [IsSuperAdmin | IsLandlord | IsAdmin]
 
     def get_object(self):
-        organisation = self.request.user.get_organisation()
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
+        if self.request.user.is_superuser:
+            return get_object_or_404(Tenant, alias=self.kwargs["tenant_alias"])
+
+        organisation = get_request_organisation(self.request)
         return get_object_or_404(
             Tenant, alias=self.kwargs["tenant_alias"], organisation=organisation
         )
