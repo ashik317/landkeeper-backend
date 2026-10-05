@@ -628,20 +628,17 @@ class TenantSendInviteView(APIView):
     def post(self, request, tenant_alias):
         user = request.user
 
-        if user.is_superuser:
-            tenant = get_object_or_404(Tenant, alias=tenant_alias)
-        else:
-            organisation = get_request_organisation(request)
-            tenant = get_object_or_404(
-                Tenant, alias=tenant_alias, organisation=organisation
-            )
+        organisation = get_request_organisation(request)
+        tenant = get_object_or_404(
+            Tenant, alias=tenant_alias, organisation=organisation
+        )
 
         if not tenant.email:
             return Response({"detail": "Tenant has no email address."}, status=400)
 
         send_tenant_invite_email(
             tenant=tenant,
-            organisation=tenant.organisation,
+            organisation=organisation,
             inviter_name=user.get_full_name() or user.email,
         )
         return Response({"detail": "Invitation sent."})

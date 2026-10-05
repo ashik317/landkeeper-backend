@@ -224,12 +224,6 @@ class TenantListView(ListCreateAPIView):
 
     def perform_create(self, serializer):
         organisation = get_request_organisation(self.request)
-
-        # The selected property must belong to the same organisation
-        property_obj = serializer.validated_data.get("property")
-        if property_obj and property_obj.organisation_id != organisation.id:
-            raise ValidationError({"property": "This property does not belong to this organisation."})
-
         serializer.save(organisation=organisation, password=make_password(None))
 
 
@@ -238,12 +232,9 @@ class TenantDetailView(RetrieveUpdateDestroyAPIView):
     permission_classes = [IsSuperAdmin | IsLandlord | IsAdmin]
 
     def get_object(self):
-        if self.request.user.is_superuser:
-            return get_object_or_404(Tenant, alias=self.kwargs["tenant_alias"])
-
-        organisation = get_request_organisation(self.request)
         return get_object_or_404(
-            Tenant, alias=self.kwargs["tenant_alias"], organisation=organisation
+            Tenant,
+            alias=self.kwargs["tenant_alias"]
         )
 
 
@@ -260,29 +251,17 @@ class ComplianceAndCertificationListView(ListCreateAPIView):
 
     def perform_create(self, serializer):
         organisation = get_request_organisation(self.request)
-
-        # The selected property must belong to the same organisation
-        property_obj = serializer.validated_data.get("property")
-        if property_obj and property_obj.organisation_id != organisation.id:
-            raise ValidationError({"property": "This property does not belong to this organisation."})
-
         serializer.save(organisation=organisation)
+
 
 class ComplianceAndCertificationDetailView(RetrieveUpdateDestroyAPIView):
     serializer_class = ComplianceAndCertificationSerializers
     permission_classes = [IsLandlord | IsAdmin | IsSuperAdmin]
 
     def get_object(self):
-        if self.request.user.is_superuser:
-            return get_object_or_404(
-                ComplianceAndCertification, alias=self.kwargs["compliance_alias"]
-            )
-
-        organisation = get_request_organisation(self.request)
         return get_object_or_404(
             ComplianceAndCertification,
-            alias=self.kwargs["compliance_alias"],
-            organisation=organisation,
+            alias=self.kwargs["compliance_alias"]
         )
 
 
