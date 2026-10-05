@@ -71,6 +71,7 @@ PROJECT_APPS = [
     "apps.notification.apps.NotificationConfig",
     "apps.document.apps.DocumentConfig",
     "apps.referral.apps.ReferralConfig",
+    "apps.marketplace.apps.MarketplaceConfig",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + PROJECT_APPS

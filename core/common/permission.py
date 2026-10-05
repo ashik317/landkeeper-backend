@@ -168,3 +168,17 @@ class CanAccessMortgage(BasePermission):
             return False
 
         return False
+
+
+class IsSuperAdminOrLandlordReadOnly(BasePermission):
+    """Super admins have full access; other platform users (not tenants) can read."""
+
+    message = "Only super administrators can modify this resource."
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not isinstance(user, User) or not user.is_authenticated:
+            return False
+        if user.is_superuser:
+            return True
+        return request.method in SAFE_METHODS

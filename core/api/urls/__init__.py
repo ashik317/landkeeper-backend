@@ -14,4 +14,5 @@ urlpatterns = [
     path("/subscription", include("api.urls.subscription")),
     path("/dashboard", include("api.urls.dashboard")),
     path("/admin", include("api.urls.admin")),
+    path("/marketplace", include("api.urls.marketplace")),
 ]
