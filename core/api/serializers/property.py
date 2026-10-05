@@ -346,6 +346,10 @@ class MortgageSerializers(serializers.ModelSerializer):
         request = self.context.get("request")
         user = getattr(request, "user", None)
 
+        # Superadmin can always edit
+        if user.is_superuser:
+            return True
+
         if not user or not user.is_authenticated:
             return False
 

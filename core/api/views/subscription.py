@@ -42,7 +42,7 @@ from apps.organisation.stripe_service import (
     get_pending_downgrade_info,
     cancel_pending_downgrade,
 )
-from apps.property.utils import get_request_organisation
+from apps.organisation.utils import get_request_organisation
 from apps.subscription.models import SubscriptionPlan, PaymentCard, PaymentTransaction
 from apps.organisation.models import OrganisationSubscription
 from apps.property.models import Property
@@ -616,6 +616,7 @@ class LandlordPaymentCardCreateAPIView(ListCreateAPIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
 
 class CancelPendingDowngradeAPIView(APIView):
     permission_classes = [IsLandlord]

@@ -38,7 +38,7 @@ from apps.property.models import (
     Finance,
     ComplianceShare,
 )
-from apps.property.utils import get_request_organisation
+from apps.organisation.utils import get_request_organisation
 
 from common.permission import (
     IsLandlord,

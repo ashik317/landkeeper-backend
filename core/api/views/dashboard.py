@@ -10,7 +10,7 @@ from rest_framework.generics import RetrieveAPIView
 from apps.authentication.models import Permission
 from apps.organisation.enums import OrganisationRoleChoices
 from apps.organisation.models import OrganisationSubscription, OrganisationUser
-from apps.property.utils import get_request_organisation
+from apps.organisation.utils import get_request_organisation
 from apps.supportticket.models import SupportTicket
 from apps.property.models import (
     Property,
