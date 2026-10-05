@@ -30,8 +30,9 @@ from rest_framework.response import Response
 from apps.authentication.signals import create_default_organisation
 from apps.organisation.enums import OrganisationRoleChoices
 from apps.organisation.models import OrganisationUser
+from apps.organisation.utils import get_request_organisation
 from apps.property.models import Tenant
-from common.permission import IsLandlord
+from common.permission import IsLandlord, IsSuperAdmin, IsAdmin
 from allauth.socialaccount.providers.oauth2.client import OAuth2Error
 from api.serializers.organisation import OrganisationUserSerializer
 from ..serializers.auth import (
@@ -621,25 +622,27 @@ class AcceptInviteView(APIView):
             status=status.HTTP_201_CREATED,
         )
 
-
 class TenantSendInviteView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsSuperAdmin | IsLandlord]
 
     def post(self, request, tenant_alias):
-        organisation = request.user.get_organisation()
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
+        user = request.user
 
-        tenant = get_object_or_404(
-            Tenant, alias=tenant_alias, organisation=organisation
-        )
+        if user.is_superuser:
+            tenant = get_object_or_404(Tenant, alias=tenant_alias)
+        else:
+            organisation = get_request_organisation(request)
+            tenant = get_object_or_404(
+                Tenant, alias=tenant_alias, organisation=organisation
+            )
+
         if not tenant.email:
             return Response({"detail": "Tenant has no email address."}, status=400)
 
         send_tenant_invite_email(
             tenant=tenant,
-            organisation=organisation,
-            inviter_name=request.user.get_full_name(),
+            organisation=tenant.organisation,
+            inviter_name=user.get_full_name() or user.email,
         )
         return Response({"detail": "Invitation sent."})
 
