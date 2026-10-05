@@ -249,31 +249,40 @@ class TenantDetailView(RetrieveUpdateDestroyAPIView):
 
 class ComplianceAndCertificationListView(ListCreateAPIView):
     serializer_class = ComplianceAndCertificationSerializers
-    permission_classes = [IsLandlord | IsAdmin]
+    permission_classes = [IsSuperAdmin | IsLandlord | IsAdmin]
     search_fields = ["property__property_name", "certificate_number"]
 
     def get_queryset(self):
-        organisation = self.request.user.get_organisation()
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
+        organisation = get_request_organisation(self.request)
         return ComplianceAndCertification.objects.filter(
             organisation=organisation
         ).order_by("-created_at")
 
     def perform_create(self, serializer):
-        organisation = self.request.user.get_organisation()
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
-        serializer.save(organisation=organisation)
+        organisation = get_request_organisation(self.request)
 
+        # The selected property must belong to the same organisation
+        property_obj = serializer.validated_data.get("property")
+        if property_obj and property_obj.organisation_id != organisation.id:
+            raise ValidationError({"property": "This property does not belong to this organisation."})
+
+        serializer.save(organisation=organisation)
 
 class ComplianceAndCertificationDetailView(RetrieveUpdateDestroyAPIView):
     serializer_class = ComplianceAndCertificationSerializers
-    permission_classes = [IsLandlord | IsAdmin]
+    permission_classes = [IsLandlord | IsAdmin | IsSuperAdmin]
 
     def get_object(self):
+        if self.request.user.is_superuser:
+            return get_object_or_404(
+                ComplianceAndCertification, alias=self.kwargs["compliance_alias"]
+            )
+
+        organisation = get_request_organisation(self.request)
         return get_object_or_404(
-            ComplianceAndCertification, alias=self.kwargs["compliance_alias"]
+            ComplianceAndCertification,
+            alias=self.kwargs["compliance_alias"],
+            organisation=organisation,
         )
 
 
