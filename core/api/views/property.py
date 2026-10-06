@@ -135,12 +135,16 @@ class PropertyListView(ListCreateAPIView):
 class PropertyDetailView(RetrieveUpdateDestroyAPIView):
     serializer_class = PropertySerializer
     permission_classes = [CanAccessProperty | IsSuperAdmin]
-    lookup_field = "alias"
-    lookup_url_kwarg = "property_alias"
 
-    def get_queryset(self):
+    def get_object(self):
         organisation = get_request_organisation(self.request)
-        return Property.objects.filter(organisation=organisation)
+        obj = get_object_or_404(
+            Property,
+            alias=self.kwargs["property_alias"],
+            organisation=organisation,
+        )
+        self.check_object_permissions(self.request, obj)
+        return obj
 
 
 class MortgageListView(ListCreateAPIView):
@@ -192,12 +196,16 @@ class MortgageListView(ListCreateAPIView):
 class MortgageDetailView(RetrieveUpdateDestroyAPIView):
     serializer_class = MortgageSerializers
     permission_classes = [CanAccessMortgage | IsSuperAdmin]
-    lookup_field = "alias"
-    lookup_url_kwarg = "mortgage_alias"
 
-    def get_queryset(self):
+    def get_object(self):
         organisation = get_request_organisation(self.request)
-        return Mortgage.objects.filter(organisation=organisation)
+        obj = get_object_or_404(
+            Mortgage,
+            alias=self.kwargs["mortgage_alias"],
+            organisation=organisation,
+        )
+        self.check_object_permissions(self.request, obj)
+        return obj
 
 
 class TenantListView(ListCreateAPIView):
@@ -223,12 +231,16 @@ class TenantListView(ListCreateAPIView):
 class TenantDetailView(RetrieveUpdateDestroyAPIView):
     serializer_class = TenantSerializer
     permission_classes = [IsSuperAdmin | IsLandlord | IsAdmin]
-    lookup_field = "alias"
-    lookup_url_kwarg = "tenant_alias"
 
-    def get_queryset(self):
+    def get_object(self):
         organisation = get_request_organisation(self.request)
-        return Tenant.objects.filter(organisation=organisation)
+        obj = get_object_or_404(
+            Tenant,
+            alias=self.kwargs["tenant_alias"],
+            organisation=organisation,
+        )
+        self.check_object_permissions(self.request, obj)
+        return obj
 
 
 class ComplianceAndCertificationListView(ListCreateAPIView):
@@ -250,12 +262,16 @@ class ComplianceAndCertificationListView(ListCreateAPIView):
 class ComplianceAndCertificationDetailView(RetrieveUpdateDestroyAPIView):
     serializer_class = ComplianceAndCertificationSerializers
     permission_classes = [IsLandlord | IsAdmin | IsSuperAdmin]
-    lookup_field = "alias"
-    lookup_url_kwarg = "compliance_alias"
 
-    def get_queryset(self):
+    def get_object(self):
         organisation = get_request_organisation(self.request)
-        return ComplianceAndCertification.objects.filter(organisation=organisation)
+        obj = get_object_or_404(
+            ComplianceAndCertification,
+            alias=self.kwargs["compliance_alias"],
+            organisation=organisation,
+        )
+        self.check_object_permissions(self.request, obj)
+        return obj
 
 
 class UploadDocumentListCreateApiView(ListCreateAPIView):
@@ -272,8 +288,7 @@ class UploadDocumentListCreateApiView(ListCreateAPIView):
 
     def perform_create(self, serializer):
         organisation = get_request_organisation(self.request)
-        uploaded_files = self.request.FILES.getlist("uploaded_files")
-        serializer.save(organisation=organisation, uploaded_files=uploaded_files)
+        serializer.save(organisation=organisation)
 
 
 class UploadDocumentRetrieveAPIView(RetrieveUpdateDestroyAPIView):
@@ -282,15 +297,13 @@ class UploadDocumentRetrieveAPIView(RetrieveUpdateDestroyAPIView):
 
     def get_object(self):
         organisation = get_request_organisation(self.request)
-        return get_object_or_404(
+        obj = get_object_or_404(
             UploadDocument,
             alias=self.kwargs["document_alias"],
             organisation=organisation,
         )
-
-    def perform_update(self, serializer):
-        uploaded_files = self.request.FILES.getlist("uploaded_files")
-        serializer.save(uploaded_files=uploaded_files)
+        self.check_object_permissions(self.request, obj)
+        return obj
 
 
 class FinanceListView(ListCreateAPIView):
@@ -315,12 +328,13 @@ class FinanceDetailView(RetrieveUpdateDestroyAPIView):
 
     def get_object(self):
         organisation = get_request_organisation(self.request)
-        return get_object_or_404(
+        obj = get_object_or_404(
             Finance,
             alias=self.kwargs["finance_alias"],
             organisation=organisation,
         )
-
+        self.check_object_permissions(self.request, obj)
+        return obj
 
 
 class PropertyOnboardingAPIView(APIView):
