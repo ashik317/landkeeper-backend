@@ -234,13 +234,11 @@ class TenantDetailView(RetrieveUpdateDestroyAPIView):
 
     def get_object(self):
         organisation = get_request_organisation(self.request)
-        obj = get_object_or_404(
+        return get_object_or_404(
             Tenant,
             alias=self.kwargs["tenant_alias"],
             organisation=organisation,
         )
-        self.check_object_permissions(self.request, obj)
-        return obj
 
 
 class ComplianceAndCertificationListView(ListCreateAPIView):
@@ -265,14 +263,11 @@ class ComplianceAndCertificationDetailView(RetrieveUpdateDestroyAPIView):
 
     def get_object(self):
         organisation = get_request_organisation(self.request)
-        obj = get_object_or_404(
+        return get_object_or_404(
             ComplianceAndCertification,
             alias=self.kwargs["compliance_alias"],
             organisation=organisation,
         )
-        self.check_object_permissions(self.request, obj)
-        return obj
-
 
 class UploadDocumentListCreateApiView(ListCreateAPIView):
     serializer_class = UploadDocumentSerializer
@@ -297,13 +292,11 @@ class UploadDocumentRetrieveAPIView(RetrieveUpdateDestroyAPIView):
 
     def get_object(self):
         organisation = get_request_organisation(self.request)
-        obj = get_object_or_404(
+        return get_object_or_404(
             UploadDocument,
             alias=self.kwargs["document_alias"],
             organisation=organisation,
         )
-        self.check_object_permissions(self.request, obj)
-        return obj
 
 
 class FinanceListView(ListCreateAPIView):
@@ -328,13 +321,11 @@ class FinanceDetailView(RetrieveUpdateDestroyAPIView):
 
     def get_object(self):
         organisation = get_request_organisation(self.request)
-        obj = get_object_or_404(
+        return get_object_or_404(
             Finance,
             alias=self.kwargs["finance_alias"],
             organisation=organisation,
         )
-        self.check_object_permissions(self.request, obj)
-        return obj
 
 
 class PropertyOnboardingAPIView(APIView):
