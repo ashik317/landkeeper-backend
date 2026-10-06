@@ -46,6 +46,7 @@ from api.serializers.tenants import (
 from apps.organisation.stripe_connect import (
     sync_account_status_from_stripe,
 )
+from apps.organisation.utils import get_request_organisation
 from apps.property.models import Tenant, ComplianceAndCertification, Property
 from apps.tenant.enums import (
     RentPaymentStatusChoices,
@@ -792,23 +793,12 @@ class TenantPaymentsListAPIView(ListAPIView):
         "tenant__email",
         "tenant__property__property_name",
         "tenant__property__address",
-        "amount",
     ]
 
     def get_queryset(self):
-        user = self.request.user
-        qs = (
-            CardPayment.objects
+        organisation = get_request_organisation(self.request)
+        return (
+            CardPayment.objects.filter(organisation=organisation)
             .select_related("tenant", "tenant__property", "payment_method")
             .order_by("-created_at")
         )
-
-        # Superadmin: see all payments
-        if user.is_superuser:
-            return qs
-
-        # Landlord: only their organisation
-        organisation = user.get_organisation()
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
-        return qs.filter(organisation=organisation)

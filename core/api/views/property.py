@@ -137,14 +137,13 @@ class PropertyDetailView(RetrieveUpdateDestroyAPIView):
     permission_classes = [CanAccessProperty | IsSuperAdmin]
 
     def get_object(self):
+        organisation = get_request_organisation(self.request)
         obj = get_object_or_404(
             Property,
             alias=self.kwargs["property_alias"],
+            organisation=organisation,
         )
-
-        # Check if the user has permission to access this property
         self.check_object_permissions(self.request, obj)
-
         return obj
 
 
@@ -199,11 +198,13 @@ class MortgageDetailView(RetrieveUpdateDestroyAPIView):
     permission_classes = [CanAccessMortgage | IsSuperAdmin]
 
     def get_object(self):
-        obj = get_object_or_404(Mortgage, alias=self.kwargs["mortgage_alias"])
-
-        # Check if the user has permission to access this mortgage
+        organisation = get_request_organisation(self.request)
+        obj = get_object_or_404(
+            Mortgage,
+            alias=self.kwargs["mortgage_alias"],
+            organisation=organisation,
+        )
         self.check_object_permissions(self.request, obj)
-
         return obj
 
 
@@ -232,9 +233,11 @@ class TenantDetailView(RetrieveUpdateDestroyAPIView):
     permission_classes = [IsSuperAdmin | IsLandlord | IsAdmin]
 
     def get_object(self):
+        organisation = get_request_organisation(self.request)
         return get_object_or_404(
             Tenant,
-            alias=self.kwargs["tenant_alias"]
+            alias=self.kwargs["tenant_alias"],
+            organisation=organisation,
         )
 
 
@@ -259,69 +262,70 @@ class ComplianceAndCertificationDetailView(RetrieveUpdateDestroyAPIView):
     permission_classes = [IsLandlord | IsAdmin | IsSuperAdmin]
 
     def get_object(self):
+        organisation = get_request_organisation(self.request)
         return get_object_or_404(
             ComplianceAndCertification,
-            alias=self.kwargs["compliance_alias"]
+            alias=self.kwargs["compliance_alias"],
+            organisation=organisation,
         )
-
 
 class UploadDocumentListCreateApiView(ListCreateAPIView):
     serializer_class = UploadDocumentSerializer
-    permission_classes = [IsLandlord | IsAdmin]
+    permission_classes = [IsSuperAdmin | IsLandlord | IsAdmin]
     search_fields = ["property__property_name", "document_name"]
     filterset_fields = ["document_category"]
 
     def get_queryset(self):
-        organisation = self.request.user.get_organisation()
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
-        return UploadDocument.objects.filter(organisation=organisation)
+        organisation = get_request_organisation(self.request)
+        return UploadDocument.objects.filter(
+            organisation=organisation
+        ).order_by("-created_at")
 
     def perform_create(self, serializer):
-        organisation = self.request.user.get_organisation()
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
-
-        uploaded_files = self.request.FILES.getlist("uploaded_files")
-        serializer.save(organisation=organisation, uploaded_files=uploaded_files)
+        organisation = get_request_organisation(self.request)
+        serializer.save(organisation=organisation)
 
 
 class UploadDocumentRetrieveAPIView(RetrieveUpdateDestroyAPIView):
     serializer_class = UploadDocumentSerializer
-    permission_classes = [IsLandlord | IsAdmin]
+    permission_classes = [IsSuperAdmin | IsLandlord | IsAdmin]
 
     def get_object(self):
-        return get_object_or_404(UploadDocument, alias=self.kwargs["document_alias"])
-
-    def perform_update(self, serializer):
-        uploaded_files = self.request.FILES.getlist("uploaded_files")
-        serializer.save(uploaded_files=uploaded_files)
+        organisation = get_request_organisation(self.request)
+        return get_object_or_404(
+            UploadDocument,
+            alias=self.kwargs["document_alias"],
+            organisation=organisation,
+        )
 
 
 class FinanceListView(ListCreateAPIView):
     serializer_class = FinanceSerializer
-    permission_classes = [IsLandlord | IsAdmin]
+    permission_classes = [IsSuperAdmin | IsLandlord | IsAdmin]
     search_fields = ["property__property_name"]
 
     def get_queryset(self):
-        organisation = self.request.user.get_organisation()
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
-        return Finance.objects.filter(organisation=organisation)
+        organisation = get_request_organisation(self.request)
+        return Finance.objects.filter(
+            organisation=organisation
+        ).order_by("-created_at")
 
     def perform_create(self, serializer):
-        organisation = self.request.user.get_organisation()
-        if not organisation:
-            raise NotFound("Organisation not found for the user.")
+        organisation = get_request_organisation(self.request)
         serializer.save(organisation=organisation)
 
 
 class FinanceDetailView(RetrieveUpdateDestroyAPIView):
     serializer_class = FinanceSerializer
-    permission_classes = [IsLandlord | IsAdmin]
+    permission_classes = [IsSuperAdmin | IsLandlord | IsAdmin]
 
     def get_object(self):
-        return get_object_or_404(Finance, alias=self.kwargs["finance_alias"])
+        organisation = get_request_organisation(self.request)
+        return get_object_or_404(
+            Finance,
+            alias=self.kwargs["finance_alias"],
+            organisation=organisation,
+        )
 
 
 class PropertyOnboardingAPIView(APIView):
