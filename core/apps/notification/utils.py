@@ -8,6 +8,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 
+from apps.property.models import ComplianceAndCertification
 from apps.supportticket.models import SupportTicket
 from apps.tenant.models import MaintenanceRequest, MaintenanceRequestComment
 
@@ -31,6 +32,11 @@ def enrich_notification_data(data):
             ).first()
             data["is_deleted"] = maintenance_request is None
         data.pop("category", None)
+
+    elif data.get("type") == "COMPLIANCE_CERTIFICATE":
+        data["is_deleted"] = not ComplianceAndCertification.objects.filter(
+            alias=data.get("alias")
+        ).exists()
 
     data.pop("comment_id", None)
 
@@ -182,5 +188,25 @@ def send_maintenance_status_changed_email(maintenance_request, tenant):
         f"maintenance-request-{maintenance_request.alias}.pdf",
         pdf_buffer.read(),
         "application/pdf",
+    )
+    email.send(fail_silently=False)
+
+
+def send_certificate_expiry_email(certificate, user, days_left):
+    certificate_name = certificate.get_certificate_type_display()
+
+    body = (
+        f"The {certificate_name} for {certificate.property} expires in "
+        f"{days_left} days on {certificate.expiry_date:%d %b %Y}.\n\n"
+        f"Certificate number: {certificate.certificate_number or 'N/A'}\n"
+        f"Issued by: {certificate.issued_by or 'N/A'}\n\n"
+        f"Please arrange a renewal before it expires to stay compliant."
+    )
+
+    email = EmailMessage(
+        subject=f"{certificate_name} expires in {days_left} days",
+        body=body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[user.email],
     )
     email.send(fail_silently=False)

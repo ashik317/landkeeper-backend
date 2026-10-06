@@ -11,3 +11,4 @@ class NotificationType(models.TextChoices):
         "Maintenance Status Changed"
     )
     NEW_MAINTENANCE_COMMENT = "NEW_MAINTENANCE_COMMENT", _("New Maintenance Comment")
+    CERTIFICATE_EXPIRING = "CERTIFICATE_EXPIRING", _("Certificate Expiring Soon")
