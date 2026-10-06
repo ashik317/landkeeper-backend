@@ -2,10 +2,7 @@ from autoslug import AutoSlugField
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
-from apps.marketplace.utils import (
-    marketplace_category_icon_upload_path,
-    marketplace_provider_logo_upload_path,
-)
+from apps.marketplace.utils import marketplace_provider_logo_upload_path
 from common.models import CreatedAtUpdatedAtBaseModel
 
 
@@ -13,9 +10,7 @@ class MarketplaceCategory(CreatedAtUpdatedAtBaseModel):
     name = models.CharField(max_length=128, unique=True, verbose_name=_("Name"))
     slug = AutoSlugField(populate_from="name", unique=True, always_update=False)
     description = models.TextField(blank=True, null=True)
-    icon = models.ImageField(
-        upload_to=marketplace_category_icon_upload_path, blank=True, null=True
-    )
+    icon = models.TextField(blank=True, null=True, verbose_name=_("Icon"))
     display_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
 
