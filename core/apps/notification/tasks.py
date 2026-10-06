@@ -1,6 +1,9 @@
 import logging
 from django.utils import timezone
 from asgiref.sync import async_to_sync
+from datetime import timedelta
+from apps.property.models import ComplianceAndCertification
+from apps.notification.utils import send_certificate_expiry_email
 from celery import shared_task
 from channels.layers import get_channel_layer
 from django.apps import apps
@@ -471,5 +474,106 @@ def mark_comment_notifications_deleted_task(self, comment_id):
     except Exception as exc:
         logger.exception(
             "Failed to mark notifications deleted for comment_id=%s", comment_id
+        )
+        raise self.retry(exc=exc)
+
+
+
+
+CERTIFICATE_REMINDER_DAYS = [30, 15, 3]
+@shared_task
+def check_certificate_expiry_task():
+    today = timezone.localdate()
+
+    for days_left in CERTIFICATE_REMINDER_DAYS:
+        target_date = today + timedelta(days=days_left)
+
+        certificate_ids = ComplianceAndCertification.objects.filter(
+            expiry_date=target_date,
+            organisation__is_active=True,
+        ).values_list("id", flat=True)
+
+        for certificate_id in certificate_ids:
+            notify_certificate_expiry_task.delay(certificate_id, days_left)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=10)
+def notify_certificate_expiry_task(self, certificate_id, days_left):
+    try:
+        certificate = ComplianceAndCertification.objects.select_related(
+            "property", "organisation"
+        ).get(pk=certificate_id)
+
+        landlord_users = OrganisationUser.objects.filter(
+            organisation=certificate.organisation,
+            role=OrganisationRoleChoices.LANDLORD,
+            user__is_active=True,
+        ).select_related("user")
+
+        certificate_name = certificate.get_certificate_type_display()
+        message = (
+            f"{certificate_name} for {certificate.property} expires in "
+            f"{days_left} days ({certificate.expiry_date:%d %b %Y})."
+        )
+
+        data = {
+            "type": "COMPLIANCE_CERTIFICATE",
+            # "alias": str(certificate.alias),
+            # "certificate_type": certificate.certificate_type,
+            "expiry_date": certificate.expiry_date.isoformat(),
+            # "days_left": days_left,
+        }
+
+        for organisation_user in landlord_users:
+            already_sent = Notification.objects.filter(
+                recipient_id=organisation_user.user_id,
+                notification_type=NotificationType.CERTIFICATE_EXPIRING,
+                data__alias=data["alias"],
+                data__expiry_date=data["expiry_date"],
+                data__days_left=days_left,
+            ).exists()
+            if already_sent:
+                continue
+
+            # Database + live notification
+            create_notification_task.delay(
+                recipient_id=organisation_user.user_id,
+                notification_type=NotificationType.CERTIFICATE_EXPIRING,
+                message=message,
+                data=data,
+                actor_id=None,
+            )
+
+            # Email notification
+            send_certificate_expiry_email_task.delay(
+                certificate.id,
+                organisation_user.user_id,
+                days_left,
+            )
+
+    except ComplianceAndCertification.DoesNotExist:
+        logger.warning("Certificate %s no longer exists", certificate_id)
+        return
+
+    except Exception as exc:
+        logger.exception(
+            "Failed to notify landlords about certificate %s expiry", certificate_id
+        )
+        raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=10)
+def send_certificate_expiry_email_task(self, certificate_id, user_id, days_left):
+    try:
+        certificate = ComplianceAndCertification.objects.select_related(
+            "property", "organisation"
+        ).get(pk=certificate_id)
+        user = User.objects.get(pk=user_id, is_active=True)
+
+        send_certificate_expiry_email(certificate, user, days_left)
+
+    except Exception as exc:
+        logger.exception(
+            "Failed to send certificate expiry email for certificate %s", certificate_id
         )
         raise self.retry(exc=exc)

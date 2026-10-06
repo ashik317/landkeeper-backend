@@ -4,8 +4,10 @@ attrs==26.1.0
 autobahn==26.7.1
 Automat==25.4.16
 billiard==4.2.4
-cbor2==6.1.4
+black==26.5.1
+cbor2==6.1.5
 celery==5.4.0
+celery-types==0.26.0
 certifi==2026.5.20
 cffi==2.0.0
 channels==4.1.0
@@ -15,6 +17,7 @@ click==8.4.2
 click-didyoumean==0.3.1
 click-plugins==1.1.1.2
 click-repl==0.3.0
+colorama==0.4.6
 constantly==23.10.4
 cron-descriptor==1.4.5
 cryptography==48.0.1
@@ -26,6 +29,7 @@ django-autoslug==1.9.9
 django-celery-beat==2.9.0
 django-cors-headers==4.9.0
 django-filter==25.2
+django-redis==5.4.0
 django-stubs==6.0.5
 django-stubs-ext==6.0.5
 django-timezone-field==7.2.2
@@ -43,10 +47,13 @@ inflection==0.5.1
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
 kombu==5.6.2
-msgpack==1.2.1
+msgpack==1.2.3
+mypy_extensions==1.1.0
 openpyxl==3.1.5
 packaging==26.2
+pathspec==1.1.1
 pillow==12.2.0
+platformdirs==4.12.2
 prompt_toolkit==3.0.53
 psycopg2-binary==2.9.12
 pycparser==3.0
@@ -55,6 +62,7 @@ pyOpenSSL==26.2.0
 python-crontab==3.3.0
 python-dateutil==2.9.0.post0
 python-decouple==3.8
+pytokens==0.4.1
 PyYAML==6.0.3
 redis==5.0.8
 referencing==0.37.0
@@ -70,11 +78,10 @@ txaio==26.6.1
 types-PyYAML==6.0.12.20260518
 typing_extensions==4.15.0
 tzdata==2026.2
-ujson==5.13.0
+ujson==6.0.0
 uritemplate==4.2.0
 urllib3==2.7.0
 vine==5.1.0
 wcwidth==0.8.2
 whitenoise==6.11.0
-zope.interface==8.5
-django-redis==5.4.0
+zope.interface==8.6

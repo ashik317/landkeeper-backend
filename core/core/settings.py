@@ -14,6 +14,7 @@ from corsheaders.defaults import default_headers
 from datetime import timedelta
 from pathlib import Path
 from decouple import config
+from celery.schedules import crontab
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -304,21 +305,27 @@ CELERY_RESULT_BACKEND = config(
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
-CELERY_TIMEZONE = TIME_ZONE
+CELERY_TIMEZONE = "Europe/London"
 
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60
 CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
-# django_celery_beat is already in THIRD_PARTY_APPS — just point the scheduler at it
+
+CELERY_BEAT_SCHEDULE = {
+    "check-certificate-expiry": {
+        "task": "apps.notification.tasks.check_certificate_expiry_task",
+        "schedule": crontab(hour=9, minute=0),
+    },
+}
+
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
-# Lets tests/local runs execute tasks synchronously without a real broker
+
 CELERY_TASK_ALWAYS_EAGER = config("CELERY_TASK_ALWAYS_EAGER", default=False, cast=bool)
 CELERY_TASK_EAGER_PROPAGATES = config(
-    "CELERY_TASK_ALWAYS_EAGER", default=False, cast=bool
+    "CELERY_TASK_EAGER_PROPAGATES", default=False, cast=bool
 )
-
 
 CHANNEL_LAYERS = {
     "default": {
